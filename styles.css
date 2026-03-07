@@ -171,3 +171,17 @@ th:first-child, td:first-child {
 }
 
 table tbody tr:nth-child(even) { background: #f8fafc; }
+
+.section-row td {
+  font-weight: 700;
+  background: #eef4ff;
+}
+
+.total-row td {
+  font-weight: 700;
+  background: #f0fdf4;
+}
+
+td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
