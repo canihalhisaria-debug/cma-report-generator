@@ -3,6 +3,12 @@ const workbookState = {
   selectedSheet: null,
   sourceRows: [],
   generated: null,
+  detectedHeads: [],
+  mapping: {
+    tradeReceivables: "",
+    inventory: "",
+    tradePayables: "",
+  },
 };
 
 const fileInput = document.getElementById("excel-file");
@@ -13,6 +19,10 @@ const output = document.getElementById("output");
 const downloadReportBtn = document.getElementById("download-report");
 const downloadExcelBtn = document.getElementById("download-excel");
 const downloadJsonBtn = document.getElementById("download-json");
+
+const mapReceivablesSelect = document.getElementById("map-trade-receivables");
+const mapInventorySelect = document.getElementById("map-inventory");
+const mapPayablesSelect = document.getElementById("map-trade-payables");
 
 const configIds = [
   "borrower-name",
@@ -30,6 +40,7 @@ const configIds = [
   "projection-years-tl",
   "moratorium-years",
   "sales-growth",
+  "sales-projection-mode",
   "other-income-ratio",
   "gross-margin",
   "employee-ratio",
@@ -62,6 +73,13 @@ generateBtn.addEventListener("click", generateReport);
 downloadReportBtn.addEventListener("click", downloadReport);
 downloadExcelBtn.addEventListener("click", downloadExcel);
 downloadJsonBtn.addEventListener("click", downloadJson);
+[mapReceivablesSelect, mapInventorySelect, mapPayablesSelect].forEach((el) => {
+  el.addEventListener("change", () => {
+    workbookState.mapping.tradeReceivables = mapReceivablesSelect.value;
+    workbookState.mapping.inventory = mapInventorySelect.value;
+    workbookState.mapping.tradePayables = mapPayablesSelect.value;
+  });
+});
 
 function getNumeric(value, fallback = 0) {
   const n = Number(value);
@@ -90,6 +108,7 @@ function formatFY(startYear, suffix = "") {
 }
 
 function fmtCurrency(amount) {
+  if (amount === null || amount === undefined) return "";
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -98,11 +117,78 @@ function fmtCurrency(amount) {
 }
 
 function fmtPct(value) {
+  if (value === null || value === undefined) return "";
   return `${(value || 0).toFixed(2)}%`;
 }
 
 function fmtNumber(value) {
+  if (value === null || value === undefined) return "";
   return (value || 0).toFixed(2);
+}
+
+function normalizeHead(value) {
+  return (value || "").toString().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function guessHeadText(row) {
+  for (const val of Object.values(row)) {
+    if (typeof val === "string" && val.trim()) return val.trim();
+  }
+  return "";
+}
+
+function extractAmountFromRow(row) {
+  const nums = Object.values(row).map((v) => getNumeric(v, NaN)).filter((v) => Number.isFinite(v));
+  if (!nums.length) return 0;
+  return nums.reduce((sum, n) => sum + n, 0) / nums.length;
+}
+
+function detectFinancialHeads(rows) {
+  const heads = [];
+  const seen = new Set();
+  rows.forEach((row) => {
+    const head = guessHeadText(row);
+    if (!head) return;
+    const norm = normalizeHead(head);
+    if (!norm || seen.has(norm)) return;
+    seen.add(norm);
+    heads.push({ head, norm, amount: extractAmountFromRow(row) });
+  });
+  return heads;
+}
+
+function findByAliases(heads, aliases) {
+  const normalizedAliases = aliases.map(normalizeHead);
+  return heads.find((h) => normalizedAliases.some((a) => h.norm.includes(a) || a.includes(h.norm)));
+}
+
+function buildMappingOptions() {
+  const heads = workbookState.detectedHeads;
+  const autoReceivable = findByAliases(heads, ["trade receivables", "sundry debtors", "debtors"]);
+  const autoInventory = findByAliases(heads, ["inventory", "closing stock", "stock"]);
+  const autoPayables = findByAliases(heads, ["trade payables", "creditors", "sundry creditors"]);
+
+  const options = ['<option value="">(Not mapped)</option>']
+    .concat(heads.map((h) => `<option value="${h.head}">${h.head}</option>`))
+    .join("");
+
+  mapReceivablesSelect.innerHTML = options;
+  mapInventorySelect.innerHTML = options;
+  mapPayablesSelect.innerHTML = options;
+
+  mapReceivablesSelect.value = autoReceivable?.head || "";
+  mapInventorySelect.value = autoInventory?.head || "";
+  mapPayablesSelect.value = autoPayables?.head || "";
+
+  workbookState.mapping.tradeReceivables = mapReceivablesSelect.value;
+  workbookState.mapping.inventory = mapInventorySelect.value;
+  workbookState.mapping.tradePayables = mapPayablesSelect.value;
+}
+
+function lookupMappedAmount(heads, mappedHead, fallback) {
+  if (!mappedHead) return fallback;
+  const match = heads.find((h) => h.head === mappedHead);
+  return match ? match.amount : fallback;
 }
 
 function handleWorkbookUpload(event) {
@@ -137,8 +223,11 @@ function handleSheetSelection() {
 
   const ws = workbookState.workbook.Sheets[selectedSheet];
   workbookState.sourceRows = XLSX.utils.sheet_to_json(ws, { defval: null });
+  workbookState.detectedHeads = detectFinancialHeads(workbookState.sourceRows);
+  buildMappingOptions();
+
   generateBtn.disabled = false;
-  output.innerHTML = `<p class="good">Sheet <strong>${selectedSheet}</strong> ready with ${workbookState.sourceRows.length} records.</p>`;
+  output.innerHTML = `<p class="good">Sheet <strong>${selectedSheet}</strong> ready with ${workbookState.sourceRows.length} records and ${workbookState.detectedHeads.length} detected heads.</p>`;
 }
 
 function guessYearlySales(rows, fallback = 10000000) {
@@ -181,9 +270,10 @@ function buildPeriods() {
   };
 }
 
-function buildCmaReport(baseSales) {
+function buildCmaReport(baseSales, mappedFinancials) {
   const periods = buildPeriods();
   const salesGrowth = getConfigNumber("sales-growth", 10);
+  const projectionMode = getConfigText("sales-projection-mode", "growth");
   const grossMargin = getConfigNumber("gross-margin", 28);
   const otherIncomeRatio = getConfigNumber("other-income-ratio", 1.5);
   const employeeRatio = getConfigNumber("employee-ratio", 6);
@@ -201,7 +291,7 @@ function buildCmaReport(baseSales) {
   const ccUtilization = getConfigNumber("cc-utilization", 85) / 100;
   const moratoriumYears = Math.max(0, getConfigNumber("moratorium-years", 1));
 
-  const projectedTurnoverFromCC = ccLimit / 0.2;
+  const nayakSalesAnchor = ccLimit / 0.2;
   const annualPrincipalInstallment = safeDivide(tlOutstanding, Math.max(1, periods.tlYears - moratoriumYears));
 
   const records = [];
@@ -214,24 +304,31 @@ function buildCmaReport(baseSales) {
     const isProjection = projectionIdx >= 0;
     const salesBase = idx === 0 ? baseSales : records[idx - 1].pl.Sales;
 
-    const projectedSales = salesBase * (1 + salesGrowth / 100);
-    const projectionByCC = projectedTurnoverFromCC * Math.pow(1 + salesGrowth / 100, Math.max(0, projectionIdx));
-    const sales = isProjection ? Math.max(projectedSales, projectionByCC) : isProvisional ? salesBase * 1.05 : salesBase * 0.92;
+    const growthSales = salesBase * (1 + salesGrowth / 100);
+    const nayakProjectedSales = nayakSalesAnchor * Math.pow(1 + salesGrowth / 100, Math.max(0, projectionIdx));
+    const sales = isProjection
+      ? projectionMode === "nayak"
+        ? nayakProjectedSales
+        : growthSales
+      : isProvisional
+        ? salesBase * 1.05
+        : salesBase * 0.92;
 
     const otherIncome = ratio(sales, otherIncomeRatio);
-    const totalIncome = sales + otherIncome;
 
-    const openingStock = idx === 0 ? ratio(sales, 12) : records[idx - 1].pl["Closing stock"];
-    const closingStock = ratio(sales, Math.max(8, inventoryDays / 365 * 100));
+    const openingStock = idx === 0 ? mappedFinancials.inventory : records[idx - 1].pl["Closing Stock"];
+    const closingStock = isHistorical
+      ? mappedFinancials.inventory * Math.pow(1 + salesGrowth / 100, idx * 0.5)
+      : (sales * inventoryDays) / 365;
     const purchases = sales * (1 - grossMargin / 100) * 0.84;
     const directExpenses = sales * (1 - grossMargin / 100) * 0.14;
     const cogs = openingStock + purchases + directExpenses - closingStock;
-    const grossProfit = totalIncome - cogs;
+    const grossProfit = sales - cogs;
 
     const employeeCost = ratio(sales, employeeRatio);
     const adminExpenses = ratio(sales, adminRatio);
     const sellingExpenses = ratio(sales, sellingRatio);
-    const ebitda = grossProfit - employeeCost - adminExpenses - sellingExpenses;
+    const operatingProfit = grossProfit - employeeCost - adminExpenses - sellingExpenses;
 
     const tlYearNo = projectionIdx + 1;
     const isTLYear = isProjection && tlYearNo <= periods.tlYears;
@@ -244,7 +341,7 @@ function buildCmaReport(baseSales) {
 
     const fixedAssets = sales * 0.22;
     const depreciation = ratio(fixedAssets, deprRatio);
-    const pbt = ebitda - interest - depreciation;
+    const pbt = operatingProfit + otherIncome - interest - depreciation;
     const tax = Math.max(pbt, 0) * (taxRate / 100);
     const pat = pbt - tax;
 
@@ -253,9 +350,13 @@ function buildCmaReport(baseSales) {
     const capital = netWorth - reserves;
     const unsecuredLoans = sales * 0.04;
 
-    const receivables = (sales * receivableDays) / 365;
+    const receivables = isHistorical
+      ? mappedFinancials.tradeReceivables * Math.pow(1 + salesGrowth / 100, idx * 0.5)
+      : (sales * receivableDays) / 365;
     const inventory = closingStock;
-    const creditors = (purchases * payableDays) / 365;
+    const creditors = isHistorical
+      ? mappedFinancials.tradePayables * Math.pow(1 + salesGrowth / 100, idx * 0.5)
+      : (purchases * payableDays) / 365;
     const otherCurrentAssets = sales * 0.03;
     const cashBank = Math.max(sales * 0.01 + pat * 0.05, 0);
     const loansAdvances = sales * 0.02;
@@ -272,8 +373,7 @@ function buildCmaReport(baseSales) {
     const nayakMPBF = nayakTotalWorkingCapital - nayakBorrowerContribution;
     const tandonMethod1 = wcGap * 0.75;
     const tandonMethod2 = totalCurrentAssets * 0.75 - totalCurrentLiabilities;
-    const mpbfRecommended = Math.max(0, Math.min(nayakMPBF, tandonMethod1, tandonMethod2));
-    const ccRequired = Math.max(mpbfRecommended, ccLimit * ccUtilization, wcGap - marginContribution);
+    const ccRequired = Math.max(0, Math.max(nayakMPBF, tandonMethod1, tandonMethod2, wcGap - marginContribution, ccLimit * ccUtilization));
 
     const totalLiabilities = capital + reserves + openingTL + unsecuredLoans + creditors + otherCurrentLiabilities;
     const totalAssets = fixedAssets + investments + inventory + receivables + cashBank + loansAdvances + otherCurrentAssets;
@@ -283,13 +383,12 @@ function buildCmaReport(baseSales) {
     const tolTnw = safeDivide(totalLiabilities, netWorth);
     const gpRatio = safeDivide(grossProfit, sales) * 100;
     const npRatio = safeDivide(pat, sales) * 100;
-    const ebitdaMargin = safeDivide(ebitda, sales) * 100;
-    const interestCoverage = safeDivide(ebitda, interest);
+    const opMargin = safeDivide(operatingProfit, sales) * 100;
+    const interestCoverage = safeDivide(operatingProfit, interest);
 
     const grossCashAccrual = pat + depreciation + interest;
     const totalDebtObligation = installment + interest;
     const dscr = safeDivide(grossCashAccrual, totalDebtObligation);
-    const averageDSCRMarker = 0;
 
     const ratioChecks = {
       "Current Ratio >= 1.33": currentRatio >= 1.33,
@@ -298,11 +397,6 @@ function buildCmaReport(baseSales) {
       "Interest Coverage >= 1.50": interestCoverage >= 1.5,
       "DSCR >= 1.25": dscr >= 1.25,
     };
-
-    const operatingCashFlow = ebitda - tax - (receivables - (records[idx - 1]?.bs["Trade receivables"] || receivables)) - (inventory - (records[idx - 1]?.bs.Inventory || inventory)) + (creditors - (records[idx - 1]?.bs["Trade creditors"] || creditors));
-    const investingCashFlow = -fixedAssets * 0.1 - investments * 0.15;
-    const financingCashFlow = ccRequired - (records[idx - 1]?.wc["CC / MPBF considered"] || 0) + openingTL - closingTL;
-    const netCashFlow = operatingCashFlow + investingCashFlow + financingCashFlow;
 
     records.push({
       period: periodLabel,
@@ -315,95 +409,80 @@ function buildCmaReport(baseSales) {
       },
       pl: {
         Sales: sales,
-        "Other income": otherIncome,
-        "Total income": totalIncome,
-        "Opening stock": openingStock,
+        "Opening Stock": openingStock,
         Purchases: purchases,
-        "Direct expenses": directExpenses,
-        "Closing stock": closingStock,
+        "Direct Expenses": directExpenses,
+        "Closing Stock": closingStock,
         COGS: cogs,
-        "Gross profit": grossProfit,
-        "Employee cost": employeeCost,
-        "Administrative expenses": adminExpenses,
-        "Selling and distribution expenses": sellingExpenses,
-        EBITDA: ebitda,
+        "Gross Profit": grossProfit,
+        "Employee Cost": employeeCost,
+        "Administrative Expenses": adminExpenses,
+        "Selling Expenses": sellingExpenses,
+        "Operating Profit": operatingProfit,
         Interest: interest,
         Depreciation: depreciation,
-        "Profit before tax": pbt,
+        "Profit Before Tax": pbt,
         Tax: tax,
-        "Profit after tax": pat,
+        "Profit After Tax": pat,
       },
       bs: {
-        "Capital / share capital / partners capital": capital,
+        "CAPITAL & LIABILITIES": null,
+        Capital: capital,
         Reserves: reserves,
-        "Net worth": netWorth,
-        "Term loan": openingTL,
-        "Unsecured loans": unsecuredLoans,
-        "Trade creditors": creditors,
-        "Other current liabilities": otherCurrentLiabilities,
-        "Total liabilities": totalLiabilities,
-        "Fixed assets": fixedAssets,
+        "Term Loan": openingTL,
+        "Unsecured Loans": unsecuredLoans,
+        "Trade Payables": creditors,
+        "Other Current Liabilities": otherCurrentLiabilities,
+        "Total Capital & Liabilities": totalLiabilities,
+        ASSETS: null,
+        "Fixed Assets": fixedAssets,
         Investments: investments,
         Inventory: inventory,
-        "Trade receivables": receivables,
-        "Cash and bank": cashBank,
-        "Loans and advances": loansAdvances,
-        "Other current assets": otherCurrentAssets,
-        "Total assets": totalAssets,
+        "Trade Receivables": receivables,
+        "Cash & Bank": cashBank,
+        "Loans & Advances": loansAdvances,
+        "Other Current Assets": otherCurrentAssets,
+        "Total Assets": totalAssets,
       },
       wc: {
         Sales: sales,
+        "Receivable Days": receivableDays,
+        "Inventory Days": inventoryDays,
+        "Creditor Days": payableDays,
         Receivables: receivables,
         Inventory: inventory,
-        "Other current assets": otherCurrentAssets,
-        "Total current assets": totalCurrentAssets,
         Creditors: creditors,
-        "Other current liabilities": otherCurrentLiabilities,
-        "Total current liabilities": totalCurrentLiabilities,
-        "Working capital gap": wcGap,
+        "Working Capital Requirement": wcGap,
         "Nayak MPBF": nayakMPBF,
-        "Tandon Method I": tandonMethod1,
-        "Tandon Method II": tandonMethod2,
-        "CC / MPBF considered": ccRequired,
+        "CC / MPBF Considered": ccRequired,
       },
       ratios: {
         "Current Ratio": currentRatio,
         "Debt Equity Ratio": debtEquity,
         "TOL/TNW": tolTnw,
-        "GP Ratio (%)": gpRatio,
-        "NP Ratio (%)": npRatio,
-        "EBITDA Margin (%)": ebitdaMargin,
+        "Gross Profit Ratio (%)": gpRatio,
+        "Net Profit Ratio (%)": npRatio,
+        "Operating Margin (%)": opMargin,
         "Interest Coverage Ratio": interestCoverage,
         DSCR: dscr,
       },
       ratioChecks,
       termLoan: {
-        "Opening balance": openingTL,
+        "Opening Balance": openingTL,
         Installment: installment,
         Interest: interest,
-        "Total debt servicing": totalDebtObligation,
-        "Closing balance": closingTL,
+        "Total Debt Servicing": totalDebtObligation,
+        "Closing Balance": closingTL,
       },
       dscr: {
         PAT: pat,
         Depreciation: depreciation,
-        "Interest on term loan": interest,
-        "Gross cash accrual": grossCashAccrual,
+        "Interest on Term Loan": interest,
+        "Gross Cash Accrual": grossCashAccrual,
         Installment: installment,
-        "Total debt obligation": totalDebtObligation,
+        "Total Debt Obligation": totalDebtObligation,
         DSCR: dscr,
-        "Average DSCR marker": averageDSCRMarker,
-      },
-      cashFlow: {
-        EBITDA: ebitda,
-        "Less: Tax": tax,
-        "Change in receivables": receivables - (records[idx - 1]?.bs["Trade receivables"] || receivables),
-        "Change in inventory": inventory - (records[idx - 1]?.bs.Inventory || inventory),
-        "Change in creditors": creditors - (records[idx - 1]?.bs["Trade creditors"] || creditors),
-        "Cash flow from operations": operatingCashFlow,
-        "Cash flow from investing": investingCashFlow,
-        "Cash flow from financing": financingCashFlow,
-        "Net cash flow": netCashFlow,
+        "Average DSCR": 0,
       },
     });
   });
@@ -414,26 +493,27 @@ function buildCmaReport(baseSales) {
     Math.max(1, tlYears.length),
   );
   tlYears.forEach((year) => {
-    year.dscr["Average DSCR marker"] = avgDSCR;
+    year.dscr["Average DSCR"] = avgDSCR;
   });
 
   const borrowerSummary = {
-    "Borrower name": getConfigText("borrower-name"),
+    "Borrower Name": getConfigText("borrower-name"),
     Constitution: getConfigText("constitution"),
     PAN: getConfigText("pan"),
     GSTIN: getConfigText("gstin"),
-    "Bank / branch": `${getConfigText("bank-name")} / ${getConfigText("branch-name")}`,
-    "Existing limit": getConfigNumber("existing-limit", 0),
-    "Proposed limit": getConfigNumber("proposed-limit", 0),
-    "Facility type": getConfigText("facility-type"),
-    "CMA prepared date": getConfigText("prepared-date"),
-    "Projected turnover (CC/20%)": projectedTurnoverFromCC,
+    "Bank / Branch": `${getConfigText("bank-name")} / ${getConfigText("branch-name")}`,
+    "Existing Limit": getConfigNumber("existing-limit", 0),
+    "Proposed Limit": getConfigNumber("proposed-limit", 0),
+    "Facility Type": getConfigText("facility-type"),
+    "CMA Prepared Date": getConfigText("prepared-date"),
+    "Projection Basis": projectionMode === "nayak" ? "Nayak Committee (CC/20%)" : "Growth %",
   };
 
   return {
     periods,
     borrowerSummary,
     allYears: records,
+    mappedFinancials,
     averages: {
       dscr: avgDSCR,
       acceptableRepayment: avgDSCR >= 1.25,
@@ -445,14 +525,10 @@ function buildCmaReport(baseSales) {
       "Projected years for Term Loan": periods.tlYears,
       "Moratorium (years)": moratoriumYears,
       "Sales growth %": salesGrowth,
-      "Projected turnover = CC limit / 0.20": projectedTurnoverFromCC,
-      "Gross margin %": grossMargin,
-      "Tax rate %": taxRate,
+      "CC based sales (CC/20%)": nayakSalesAnchor,
       "Receivable days": receivableDays,
       "Inventory days": inventoryDays,
       "Creditor days": payableDays,
-      "Borrower margin contribution %": marginRatio,
-      "Term loan rate %": tlRate * 100,
     },
   };
 }
@@ -469,8 +545,9 @@ function buildSectionHtml(title, headerPeriods, rows, formatter = fmtCurrency) {
   const head = `<tr><th>Particulars</th>${headerPeriods.map((p) => `<th>${p}</th>`).join("")}</tr>`;
   const body = rows
     .map(({ label, values }) => {
+      const isHeader = values.every((v) => v === null || v === undefined);
       const cells = values.map((v) => `<td>${formatter(v, label)}</td>`).join("");
-      return `<tr><td>${label}</td>${cells}</tr>`;
+      return `<tr class="${isHeader ? "section-break" : ""}"><td>${label}</td>${cells}</tr>`;
     })
     .join("");
 
@@ -500,6 +577,13 @@ function renderReport(report) {
   const summaryRows = Object.entries(report.borrowerSummary)
     .map(([k, v]) => `<tr><td>${k}</td><td>${typeof v === "number" ? fmtCurrency(v) : v}</td></tr>`)
     .join("");
+  const mappingRows = [
+    ["Trade Receivables", report.mappedFinancials.tradeReceivables],
+    ["Inventory", report.mappedFinancials.inventory],
+    ["Trade Payables", report.mappedFinancials.tradePayables],
+  ]
+    .map(([k, v]) => `<tr><td>${k}</td><td>${fmtCurrency(v)}</td></tr>`)
+    .join("");
   const assumptionsRows = Object.entries(report.assumptions)
     .map(([k, v]) => `<tr><td>${k}</td><td>${typeof v === "number" ? fmtNumber(v) : v}</td></tr>`)
     .join("");
@@ -508,18 +592,18 @@ function renderReport(report) {
     <article class="cma-report">
       <header class="report-header">
         <h2>Banker-Grade CMA Report</h2>
-        <p class="good">Average DSCR: ${report.averages.dscr.toFixed(2)} (${report.averages.acceptableRepayment ? "Repayment capacity acceptable" : "Repayment capacity needs strengthening"})</p>
+        <p class="good">Average DSCR: ${report.averages.dscr.toFixed(2)} (${report.averages.acceptableRepayment ? "Acceptable banking norm (>= 1.25)" : "Below acceptable banking norm (< 1.25)"})</p>
       </header>
       <section class="report-section"><h3>Summary</h3><table><tbody>${summaryRows}</tbody></table></section>
+      <section class="report-section"><h3>Mapped Financial Heads (Uploaded Data)</h3><table><tbody>${mappingRows}</tbody></table></section>
       <section class="report-section"><h3>Assumptions</h3><table><tbody>${assumptionsRows}</tbody></table></section>
-      ${buildSectionHtml("Profit & Loss", periods, getRowsByMap(report.allYears, "pl"))}
+      ${buildSectionHtml("Profit & Loss (Vertical Format)", periods, getRowsByMap(report.allYears, "pl"))}
       ${buildSectionHtml("Balance Sheet", periods, getRowsByMap(report.allYears, "bs"))}
       ${buildSectionHtml("Working Capital Assessment", ccSeries.map((y) => y.period), getRowsByMap(ccSeries, "wc"))}
       ${buildSectionHtml("Ratio Analysis", periods, getRowsByMap(report.allYears, "ratios"), (value, label) => label.includes("(%)") ? fmtPct(value) : fmtNumber(value))}
       ${renderRatioValidation(report)}
       ${buildSectionHtml("Term Loan Schedule", tlSeries.map((y) => y.period), getRowsByMap(tlSeries, "termLoan"))}
       ${buildSectionHtml("DSCR", tlSeries.map((y) => y.period), getRowsByMap(tlSeries, "dscr"), (value, label) => label.includes("DSCR") ? fmtNumber(value) : fmtCurrency(value))}
-      ${buildSectionHtml("Cash Flow", periods, getRowsByMap(report.allYears, "cashFlow"))}
     </article>
   `;
 }
@@ -535,8 +619,14 @@ function saveFile(content, filename, mime = "text/plain") {
 }
 
 function generateReport() {
+  const heads = workbookState.detectedHeads;
+  const mappedFinancials = {
+    tradeReceivables: lookupMappedAmount(heads, workbookState.mapping.tradeReceivables, 0),
+    inventory: lookupMappedAmount(heads, workbookState.mapping.inventory, 0),
+    tradePayables: lookupMappedAmount(heads, workbookState.mapping.tradePayables, 0),
+  };
   const baseSales = guessYearlySales(workbookState.sourceRows);
-  const data = buildCmaReport(baseSales);
+  const data = buildCmaReport(baseSales, mappedFinancials);
 
   workbookState.generated = {
     meta: {
@@ -580,9 +670,7 @@ function applyNumberFormat(ws, startRow, endRow, periodCount, format) {
   for (let r = startRow; r <= endRow; r += 1) {
     for (let c = 2; c <= periodCount + 1; c += 1) {
       const ref = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 });
-      if (ws[ref] && (typeof ws[ref].v === "number" || ws[ref].f)) {
-        ws[ref].z = format;
-      }
+      if (ws[ref] && (typeof ws[ref].v === "number" || ws[ref].f)) ws[ref].z = format;
     }
   }
 }
@@ -621,22 +709,15 @@ function downloadExcel() {
   const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
   formatSheetWithHeader(summaryWs, "Summary", 2);
 
-  const assumptions = [["Assumptions"], ["Parameter", "Value"]];
-  Object.entries(report.assumptions).forEach(([k, v]) => assumptions.push([k, v]));
-  const assumptionsWs = XLSX.utils.aoa_to_sheet(assumptions);
-  formatSheetWithHeader(assumptionsWs, "Assumptions", 2);
-
   const plRows = getRowsByMap(report.allYears, "pl");
   const plWs = makeSectionSheet("Profit & Loss", periods, plRows);
   periods.forEach((_, i) => {
     const col = i + 2;
-    setFormula(plWs, 4, col, `${toCell(2, col)}*1`, "₹#,##0");
-    setFormula(plWs, 6, col, `${toCell(4, col)}+${toCell(5, col)}`, "₹#,##0");
-    setFormula(plWs, 11, col, `${toCell(7, col)}+${toCell(8, col)}+${toCell(9, col)}-${toCell(10, col)}`, "₹#,##0");
-    setFormula(plWs, 12, col, `${toCell(6, col)}-${toCell(11, col)}`, "₹#,##0");
-    setFormula(plWs, 16, col, `${toCell(12, col)}-${toCell(13, col)}-${toCell(14, col)}-${toCell(15, col)}`, "₹#,##0");
-    setFormula(plWs, 19, col, `${toCell(16, col)}-${toCell(17, col)}-${toCell(18, col)}`, "₹#,##0");
-    setFormula(plWs, 21, col, `${toCell(19, col)}-${toCell(20, col)}`, "₹#,##0");
+    setFormula(plWs, 8, col, `${toCell(4, col)}+${toCell(5, col)}+${toCell(6, col)}-${toCell(7, col)}`, "₹#,##0");
+    setFormula(plWs, 9, col, `${toCell(3, col)}-${toCell(8, col)}`, "₹#,##0");
+    setFormula(plWs, 13, col, `${toCell(9, col)}-${toCell(10, col)}-${toCell(11, col)}-${toCell(12, col)}`, "₹#,##0");
+    setFormula(plWs, 16, col, `${toCell(13, col)}-${toCell(14, col)}-${toCell(15, col)}`, "₹#,##0");
+    setFormula(plWs, 18, col, `${toCell(16, col)}-${toCell(17, col)}`, "₹#,##0");
   });
   applyNumberFormat(plWs, 3, plRows.length + 2, periods.length, "₹#,##0");
 
@@ -644,38 +725,32 @@ function downloadExcel() {
   const bsWs = makeSectionSheet("Balance Sheet", periods, bsRows);
   periods.forEach((_, i) => {
     const col = i + 2;
-    setFormula(bsWs, 5, col, `${toCell(3, col)}+${toCell(4, col)}`, "₹#,##0");
-    setFormula(bsWs, 9, col, `${toCell(5, col)}+${toCell(6, col)}+${toCell(7, col)}+${toCell(8, col)}`, "₹#,##0");
-    setFormula(bsWs, 17, col, `${toCell(10, col)}+${toCell(11, col)}+${toCell(12, col)}+${toCell(13, col)}+${toCell(14, col)}+${toCell(15, col)}+${toCell(16, col)}`, "₹#,##0");
+    setFormula(bsWs, 10, col, `${toCell(4, col)}+${toCell(5, col)}+${toCell(6, col)}+${toCell(7, col)}+${toCell(8, col)}+${toCell(9, col)}`, "₹#,##0");
+    setFormula(bsWs, 19, col, `${toCell(12, col)}+${toCell(13, col)}+${toCell(14, col)}+${toCell(15, col)}+${toCell(16, col)}+${toCell(17, col)}+${toCell(18, col)}`, "₹#,##0");
   });
-  applyNumberFormat(bsWs, 3, bsRows.length + 2, periods.length, "₹#,##0");
 
   const wcPeriods = ccSeries.map((y) => y.period);
   const wcRows = getRowsByMap(ccSeries, "wc");
-  const wcWs = makeSectionSheet("Working Capital Assessment", wcPeriods, wcRows);
+  const wcWs = makeSectionSheet("Working Capital", wcPeriods, wcRows);
   wcPeriods.forEach((_, i) => {
     const col = i + 2;
-    setFormula(wcWs, 7, col, `${toCell(4, col)}+${toCell(5, col)}+${toCell(6, col)}`, "₹#,##0");
-    setFormula(wcWs, 10, col, `${toCell(8, col)}+${toCell(9, col)}`, "₹#,##0");
-    setFormula(wcWs, 11, col, `${toCell(7, col)}-${toCell(10, col)}`, "₹#,##0");
-    setFormula(wcWs, 12, col, `${toCell(3, col)}*0.20`, "₹#,##0");
-    setFormula(wcWs, 13, col, `${toCell(11, col)}*0.75`, "₹#,##0");
-    setFormula(wcWs, 14, col, `${toCell(7, col)}*0.75-${toCell(10, col)}`, "₹#,##0");
-    setFormula(wcWs, 15, col, `MAX(${toCell(12, col)},${toCell(13, col)},${toCell(14, col)})`, "₹#,##0");
+    setFormula(wcWs, 10, col, `MAX(${toCell(9, col)},${toCell(3, col)}*0.20)`, "₹#,##0");
   });
-  applyNumberFormat(wcWs, 3, wcRows.length + 2, wcPeriods.length, "₹#,##0");
 
   const ratioWs = makeSectionSheet("Ratio Analysis", periods, getRowsByMap(report.allYears, "ratios"));
-  applyNumberFormat(ratioWs, 3, 20, periods.length, "0.00");
+  periods.forEach((_, i) => {
+    const col = i + 2;
+    setFormula(ratioWs, 3, col, `'Working Capital'!${toCell(8, col)}/('Balance Sheet'!${toCell(7, col)}+'Balance Sheet'!${toCell(8, col)})`, "0.00");
+    setFormula(ratioWs, 10, col, `'DSCR'!${toCell(9, col)}`, "0.00");
+  });
 
   const tlPeriods = tlSeries.map((y) => y.period);
   const tlRows = getRowsByMap(tlSeries, "termLoan");
-  const tlWs = makeSectionSheet("Term Loan Schedule", tlPeriods, tlRows);
+  const tlWs = makeSectionSheet("Term Loan", tlPeriods, tlRows);
   tlPeriods.forEach((_, i) => {
     const col = i + 2;
     setFormula(tlWs, 6, col, `${toCell(4, col)}+${toCell(5, col)}`, "₹#,##0");
   });
-  applyNumberFormat(tlWs, 3, tlRows.length + 2, tlPeriods.length, "₹#,##0");
 
   const dscrRows = getRowsByMap(tlSeries, "dscr");
   const dscrWs = makeSectionSheet("DSCR", tlPeriods, dscrRows);
@@ -684,26 +759,16 @@ function downloadExcel() {
     setFormula(dscrWs, 6, col, `${toCell(3, col)}+${toCell(4, col)}+${toCell(5, col)}`, "₹#,##0");
     setFormula(dscrWs, 8, col, `${toCell(7, col)}+${toCell(5, col)}`, "₹#,##0");
     setFormula(dscrWs, 9, col, `${toCell(6, col)}/${toCell(8, col)}`, "0.00");
+    setFormula(dscrWs, 10, col, `AVERAGE(${toCell(9, 2)}:${toCell(9, tlPeriods.length + 1)})`, "0.00");
   });
-  const dscrAverageRow = 10;
-  tlPeriods.forEach((_, i) => {
-    const col = i + 2;
-    setFormula(dscrWs, dscrAverageRow, col, `AVERAGE(${toCell(9, 2)}:${toCell(9, tlPeriods.length + 1)})`, "0.00");
-  });
-  dscrWs[toCell(dscrAverageRow, 1)] = { t: "s", v: "Average DSCR" };
-
-  const cashWs = makeSectionSheet("Cash Flow", periods, getRowsByMap(report.allYears, "cashFlow"));
-  applyNumberFormat(cashWs, 3, 25, periods.length, "₹#,##0");
 
   XLSX.utils.book_append_sheet(wb, summaryWs, "Summary");
-  XLSX.utils.book_append_sheet(wb, assumptionsWs, "Assumptions");
   XLSX.utils.book_append_sheet(wb, plWs, "Profit & Loss");
   XLSX.utils.book_append_sheet(wb, bsWs, "Balance Sheet");
   XLSX.utils.book_append_sheet(wb, wcWs, "Working Capital");
   XLSX.utils.book_append_sheet(wb, ratioWs, "Ratio Analysis");
   XLSX.utils.book_append_sheet(wb, tlWs, "Term Loan");
   XLSX.utils.book_append_sheet(wb, dscrWs, "DSCR");
-  XLSX.utils.book_append_sheet(wb, cashWs, "Cash Flow");
 
   XLSX.writeFile(wb, "cma-report.xlsx");
 }

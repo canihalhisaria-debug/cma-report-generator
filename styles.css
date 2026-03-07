@@ -192,3 +192,20 @@ ol {
 table tbody tr:nth-child(even) {
   background: #f8fafc;
 }
+
+
+.mapping-box {
+  margin-top: 0.8rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.8rem;
+}
+
+.mapping-box h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.98rem;
+}
+
+.section-break td {
+  background: #eaf2ff;
+  font-weight: 700;
+}
