@@ -101,6 +101,12 @@ function getConfigNumber(id, fallback = 0) { return getNumeric(configInputs[id]?
 function getConfigText(id, fallback = "") { return (configInputs[id]?.value || fallback).toString().trim(); }
 function safeDivide(a, b) { return b ? a / b : 0; }
 function normalize(value) { return (value || "").toString().toLowerCase().replace(/[^a-z0-9]/g, ""); }
+function normalizeConcept(value) {
+  return normalize(value)
+    .replace(/accounts?|ledger|group|head|main|under/g, "")
+    .replace(/partners?/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
 function fmtCurrency(v) { return v === null || v === undefined ? "" : new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v); }
 function fmtPct(v) { return `${(v || 0).toFixed(2)}%`; }
 function fmtNumber(v) { return v === null || v === undefined ? "" : (v || 0).toFixed(2); }
@@ -281,10 +287,11 @@ function strictHistoricalBucket(head) {
   if (/bankod|cashcredit|workingcapitalborrow|cc\b/.test(text)) return "ccBorrowing";
   if (/capitalaccount|partnerscapital|capital\b/.test(text)) return "capital";
   if (/cashinhand|cashatbank|bankbalance|currentbank|currentaccount|bankaccount|cashbank|bankof|hdfc|icici|axis|sbi/.test(text)) return "cashBank";
-  if (/gstitc|tdsreceivable|othercurrentassets?|inputcredit|prepaid|advancesrecoverable|advanceto|advancepaid|receivable|statutoryreceivable/.test(text)) return "otherCurrentAssets";
+  if (/advancesrecoverable|advanceto|advancepaid|loans?andadvances?|securitydeposit/.test(text)) return "loansAdvances";
+  if (/gstitc|tdsreceivable|othercurrentassets?|inputcredit|prepaid|receivable|statutoryreceivable/.test(text)) return "otherCurrentAssets";
   if (/advancefromcustomer|salarypayable|tdspayable|reimbursementpayable|reimbursementdue|outstanding|expensepayable|statutorydues|gstpayable|payable/.test(text)) return "otherCurrentLiabilities";
   if (/loans?andadvances?|advanceagainstloan/.test(text)) return "loansAdvances";
-  if (/loan|debenture|longterm|deferred|mortgage/.test(text)) return "otherLongTermLiabilities";
+  if (/loan|debenture|longterm|deferred|mortgage/.test(text) && !/workingcapital|bankod|cashcredit|cc\b|overdraft/.test(text)) return "otherLongTermLiabilities";
   if (/stock|invent/.test(text)) return "inventory";
   return null;
 }
@@ -299,8 +306,8 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
     historicalSources[field.key] = [];
   });
 
-  const pushSource = (key, head, mode) => {
-    mapped[key] = (mapped[key] || 0) + head.amount;
+  const pushSource = (key, head, mode, suppressedReason = "") => {
+    if (!suppressedReason) mapped[key] = (mapped[key] || 0) + head.amount;
     historicalSources[key].push({
       head: head.head,
       section: head.section,
@@ -308,7 +315,16 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
       amount: head.amount,
       rowNumber: head.rowNumber || null,
       mode,
+      suppressedReason,
     });
+  };
+
+  const candidates = [];
+  const duplicateWarnings = [];
+  const parentChildWarnings = [];
+
+  const queueCandidate = (key, head, mode) => {
+    candidates.push({ key, head, mode, normalized: normalizeConcept(head.head), amount: head.amount, rowNumber: head.rowNumber || 999999 });
   };
 
   MAP_FIELDS.forEach((field) => {
@@ -316,7 +332,7 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
     if (!selectedHead) return;
     const head = workbookState.parsed.allHeads.find((h) => h.head === selectedHead && h.section === field.section);
     if (!head) return;
-    pushSource(field.key, head, "explicit-mapping");
+    queueCandidate(field.key, head, "explicit-mapping");
   });
 
   const fallbackDefaults = [];
@@ -344,7 +360,7 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
       const fallbackKey = historicalLockMode ? strictHistoricalBucket(head) : classifyFallbackBucket(head);
       if (!fallbackKey) return;
       if (historicalLockMode && ["otherIncome", "openingStock", "termLoan"].includes(fallbackKey)) return;
-      pushSource(fallbackKey, head, historicalLockMode ? "historical-lock-rule" : "auto-fallback");
+      queueCandidate(fallbackKey, head, historicalLockMode ? "historical-lock-rule" : "auto-fallback");
       fallbackWarnings.push({
         head: head.head,
         section: head.section,
@@ -354,11 +370,125 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
       });
     });
 
+  const specificityScore = (candidate) => {
+    const text = normalize(candidate.head.head);
+    let score = 0;
+    if (candidate.mode === "explicit-mapping") score += 20;
+    if (!/accounts?|group|total/.test(text)) score += 5;
+    score += Math.max(0, 15 - text.length * 0.05);
+    return score;
+  };
+
+  const selected = [];
+  const singleBucketCandidates = [];
+  const bySourceRow = new Map();
+  candidates.forEach((candidate) => {
+    const sourceId = `${candidate.head.section}::${candidate.head.head}::${candidate.rowNumber}`;
+    if (!bySourceRow.has(sourceId)) {
+      bySourceRow.set(sourceId, candidate);
+      return;
+    }
+    const existing = bySourceRow.get(sourceId);
+    const better = specificityScore(candidate) > specificityScore(existing) ? candidate : existing;
+    const dropped = better === candidate ? existing : candidate;
+    bySourceRow.set(sourceId, better);
+    duplicateWarnings.push({
+      head: dropped.head.head,
+      amount: dropped.amount,
+      key: dropped.key,
+      reason: `Single-bucket guard: source row already assigned to ${better.key}`,
+    });
+    pushSource(dropped.key, dropped.head, dropped.mode, "source-row-multi-bucket-suppressed");
+  });
+  singleBucketCandidates.push(...Array.from(bySourceRow.values()));
+
+  const byBucketAndConcept = new Map();
+  singleBucketCandidates.forEach((candidate) => {
+    const concept = `${candidate.key}::${candidate.normalized.replace(/accounts?$/, "")}`;
+    if (!byBucketAndConcept.has(concept)) {
+      byBucketAndConcept.set(concept, candidate);
+      return;
+    }
+    const existing = byBucketAndConcept.get(concept);
+    const better = specificityScore(candidate) > specificityScore(existing) ? candidate : existing;
+    const dropped = better === candidate ? existing : candidate;
+    byBucketAndConcept.set(concept, better);
+    duplicateWarnings.push({
+      head: dropped.head.head,
+      amount: dropped.amount,
+      key: dropped.key,
+      reason: `Duplicate concept with ${better.head.head}`,
+    });
+    pushSource(dropped.key, dropped.head, dropped.mode, "duplicate-concept-suppressed");
+  });
+
+  const conceptSelected = Array.from(byBucketAndConcept.values()).sort((a, b) => a.rowNumber - b.rowNumber);
+  const groupedByKey = conceptSelected.reduce((acc, item) => {
+    if (!acc[item.key]) acc[item.key] = [];
+    acc[item.key].push(item);
+    return acc;
+  }, {});
+
+  Object.values(groupedByKey).forEach((rows) => {
+    const suppressed = new Set();
+    rows.forEach((row, idx) => {
+      rows.forEach((other, jdx) => {
+        if (idx === jdx || suppressed.has(row) || suppressed.has(other)) return;
+        const rowNorm = normalize(row.head.head);
+        const otherNorm = normalize(other.head.head);
+        const contains = rowNorm.includes(otherNorm) || otherNorm.includes(rowNorm);
+        const nearEqual = Math.abs(row.amount - other.amount) <= Math.max(row.amount, other.amount) * 0.02;
+        if (!contains || !nearEqual) return;
+        const likelyParent = /accounts?|group|total|liabilit|asset/.test(rowNorm) ? row : other;
+        const likelyChild = likelyParent === row ? other : row;
+        suppressed.add(likelyParent);
+        parentChildWarnings.push({
+          parent: likelyParent.head.head,
+          child: likelyChild.head.head,
+          key: likelyParent.key,
+        });
+      });
+    });
+
+    rows.forEach((row) => {
+      if (suppressed.has(row)) {
+        pushSource(row.key, row.head, row.mode, "parent-child-suppressed");
+        return;
+      }
+      selected.push(row);
+    });
+  });
+
+  selected.forEach((candidate) => pushSource(candidate.key, candidate.head, candidate.mode));
+
+  const classificationReview = workbookState.parsed.allHeads.map((head) => {
+    const explicit = MAP_FIELDS.find((field) => workbookState.mapping[field.key] === head.head && field.section === head.section)?.key;
+    const suggestedKey = explicit || (historicalLockMode ? strictHistoricalBucket(head) : classifyFallbackBucket(head));
+    const dupRisk = duplicateWarnings.some((d) => d.head === head.head);
+    const parentChildFlag = parentChildWarnings.some((p) => p.parent === head.head || p.child === head.head);
+    return {
+      sourceRow: `${head.head} (Row ${head.rowNumber || "-"})`,
+      sourceValue: head.amount,
+      suggestedBucket: MAP_FIELDS.find((f) => f.key === suggestedKey)?.label || "Unclassified",
+      duplicateRisk: dupRisk ? "Yes" : "No",
+      parentChildFlag: parentChildFlag ? "Yes" : "No",
+    };
+  });
+
   const missingMandatory = CORE_REQUIRED_FIELDS
     .filter((key) => !workbookState.mapping[key] && !(key === "closingStock" && workbookState.mapping.inventory))
     .map((key) => MAP_FIELDS.find((f) => f.key === key)?.label || key);
 
-  return { mapped, fallbackWarnings, fallbackDefaults, missingMandatory, historicalSources };
+  return {
+    mapped,
+    fallbackWarnings,
+    fallbackDefaults,
+    missingMandatory,
+    historicalSources,
+    duplicateWarnings,
+    parentChildWarnings,
+    classificationReview,
+  };
 }
 
 function classifyFallbackBucket(head) {
@@ -377,20 +507,26 @@ function classifyFallbackBucket(head) {
 
   if (/sundrydebtor|tradereceivable|debtor/.test(text)) return "tradeReceivables";
   if (/sundrycreditor|tradecreditor|creditor/.test(text)) return "tradeCreditors";
-  if (/bankod|cashcredit|cc|workingcapitalborrow/.test(text)) return "ccBorrowing";
+  if (/bankod|cashcredit|workingcapital|cc\b|overdraft/.test(text)) return "ccBorrowing";
   if (/cashinhand|cashatbank|bankbalance|currentaccount|bankaccount|overdraftaccount|cashbank/.test(text)) return "cashBank";
   if (/advancetohardik|advancerent|securitydeposit|advancesalary|loanandadvance|advancepaid/.test(text)) return "loansAdvances";
   if (/gstitc|tdsreceivable|othercurrentasset|inputcredit|prepaid/.test(text)) return "otherCurrentAssets";
   if (/advancefromcustomer|salarypayable|reimbursementdue|tdspayable|kmr/.test(text)) return "otherCurrentLiabilities";
   if (/creditor|payable|dut|tax|gst|expensepayable|provision|outstanding|accrued|liabilit/.test(text)) return "otherCurrentLiabilities";
-  if (/loan|debenture|longterm|deferred|borrow|mortgage/.test(text)) return "otherLongTermLiabilities";
+  if (/loan|debenture|longterm|deferred|borrow|mortgage/.test(text) && !/workingcapital|bankod|cashcredit|cc\b|overdraft/.test(text)) return "otherLongTermLiabilities";
   if (/stock|invent/.test(text)) return "inventory";
   if (/advance|currentasset/.test(text)) return "otherCurrentAssets";
   return "otherNonCurrentAssets";
 }
 
-function renderMappingWarnings({ fallbackWarnings = [], fallbackDefaults = [], missingMandatory = [] } = {}) {
-  if (!fallbackWarnings.length && !fallbackDefaults.length && !missingMandatory.length) {
+function renderMappingWarnings({
+  fallbackWarnings = [],
+  fallbackDefaults = [],
+  missingMandatory = [],
+  duplicateWarnings = [],
+  parentChildWarnings = [],
+} = {}) {
+  if (!fallbackWarnings.length && !fallbackDefaults.length && !missingMandatory.length && !duplicateWarnings.length && !parentChildWarnings.length) {
     mappingWarningPanel.classList.add("hidden");
     mappingWarningPanel.innerHTML = "";
     return;
@@ -403,12 +539,16 @@ function renderMappingWarnings({ fallbackWarnings = [], fallbackDefaults = [], m
     .map((item) => `<li><strong>${item.label}</strong> → ${fmtCurrency(item.value)} <em>(${item.note})</em></li>`)
     .join("");
   const mandatoryItems = missingMandatory.map((item) => `<li>${item}</li>`).join("");
+  const duplicateItems = duplicateWarnings.map((item) => `<li><strong>${item.head}</strong> (${fmtCurrency(item.amount)}) → ${item.reason}</li>`).join("");
+  const parentChildItems = parentChildWarnings.map((item) => `<li><strong>${item.parent}</strong> suppressed; child retained: <strong>${item.child}</strong></li>`).join("");
 
   mappingWarningPanel.innerHTML = `
     <h3>⚠️ Mapping Warnings</h3>
     ${missingMandatory.length ? `<p><strong>Missing core heads (generation blocked):</strong></p><ul>${mandatoryItems}</ul>` : ""}
     ${fallbackDefaults.length ? `<p><strong>Fallback defaults applied:</strong></p><ul>${defaultItems}</ul>` : ""}
     ${fallbackWarnings.length ? `<p><strong>Unmapped heads assigned to fallback buckets:</strong></p><ul>${fallbackItems}</ul>` : ""}
+    ${duplicateWarnings.length ? `<p><strong>Duplicate concept suppression:</strong></p><ul>${duplicateItems}</ul>` : ""}
+    ${parentChildWarnings.length ? `<p><strong>Parent / child group suppression:</strong></p><ul>${parentChildItems}</ul>` : ""}
   `;
   mappingWarningPanel.classList.remove("hidden");
 
@@ -438,7 +578,10 @@ function buildTermLoanSchedule(periods, fallbackAmount = 0) {
     return row;
   });
 
-  return { applicable: true, rows };
+  const hasInstallment = rows.some((row) => row.installment > 0);
+  const warning = !hasInstallment ? "Installment is zero for all projected years. Repayment structure is incomplete." : "";
+
+  return { applicable: true, rows, warning };
 }
 
 function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
@@ -532,8 +675,11 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
       }
     }
 
-    const requiredWc = Math.max(totalCurrentAssets - totalCurrentLiabilities, 0);
-    const shortfall = Math.max(requiredWc - existingCCLimit, 0);
+    const netWorkingCapital = totalCurrentAssets - totalCurrentLiabilities;
+    const workingCapitalGap = Math.max(totalCurrentAssets - (tradeCreditors + otherCurrentLiabilities), 0);
+    const borrowerMargin = Math.max(netWorkingCapital, 0);
+    const requiredBankFinance = Math.max(workingCapitalGap - borrowerMargin, 0);
+    const shortfall = Math.max(requiredBankFinance - existingCCLimit, 0);
     const proposedCCLimit = isHistoricalYear ? historicalCcOutstanding : existingCCLimit + shortfall;
 
     const installment = termLoan.applicable ? termLoan.rows[idx].installment : 0;
@@ -593,9 +739,12 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
         projectedSales: sales,
         totalCurrentAssets,
         totalCurrentLiabilities,
-        netWorkingCapital: totalCurrentAssets - totalCurrentLiabilities,
+        netWorkingCapital,
+        workingCapitalGap,
+        borrowerMargin,
+        bankFinanceRequired: requiredBankFinance,
         currentRatio: safeDivide(totalCurrentAssets, totalCurrentLiabilities),
-        requiredWorkingCapital: requiredWc,
+        requiredWorkingCapital: requiredBankFinance,
         existingLimit: isHistoricalYear ? historicalCcOutstanding : existingCCLimit,
         proposedLimit: proposedCCLimit,
         shortfall,
@@ -644,17 +793,32 @@ function buildHistoricalDebugHtml(report) {
   const fieldLabel = Object.fromEntries(MAP_FIELDS.map((f) => [f.key, f.label]));
   const debugRows = Object.entries(report.meta?.historicalDebug?.sources || {}).flatMap(([key, sources]) => {
     if (!sources.length) {
-      return [`<tr><td>${fieldLabel[key] || key}</td><td>-</td><td>-</td><td>${fmtCurrency(report.meta?.historicalDebug?.values?.[key] || 0)}</td></tr>`];
+      return [`<tr><td>${fieldLabel[key] || key}</td><td>-</td><td>-</td><td>${fmtCurrency(report.meta?.historicalDebug?.values?.[key] || 0)}</td><td>-</td></tr>`];
     }
-    return sources.map((src) => `<tr><td>${fieldLabel[key] || key}</td><td>${src.sheet || src.section.toUpperCase()}</td><td>${src.head} (Row ${src.rowNumber || "-"})</td><td>${fmtCurrency(src.amount)}</td></tr>`);
+    return sources.map((src) => `<tr><td>${fieldLabel[key] || key}</td><td>${src.sheet || src.section.toUpperCase()}</td><td>${src.head} (Row ${src.rowNumber || "-"})</td><td>${fmtCurrency(src.amount)}</td><td>${src.suppressedReason || "-"}</td></tr>`);
   }).join("");
+
+  const reviewRows = (report.meta?.classificationReview || []).map((row) => `
+    <tr>
+      <td>${row.sourceRow}</td>
+      <td>${fmtCurrency(row.sourceValue)}</td>
+      <td>${row.suggestedBucket}</td>
+      <td>${row.duplicateRisk}</td>
+      <td>${row.parentChildFlag}</td>
+    </tr>
+  `).join("");
 
   return `
     <section class="report-section">
       <h3>FY-1 Historical Mapping Debug Review</h3>
       <table>
-        <thead><tr><th>Final CMA Line Item</th><th>Source Sheet</th><th>Source Row</th><th>Source Value</th></tr></thead>
+        <thead><tr><th>Final CMA Line Item</th><th>Source Sheet</th><th>Source Row</th><th>Source Value</th><th>Suppression Flag</th></tr></thead>
         <tbody>${debugRows}</tbody>
+      </table>
+      <h3>Classification Review Panel</h3>
+      <table>
+        <thead><tr><th>Source Row</th><th>Source Value</th><th>Suggested Bucket</th><th>Duplicate Risk</th><th>Parent/Child Group Flag</th></tr></thead>
+        <tbody>${reviewRows}</tbody>
       </table>
     </section>
   `;
@@ -686,12 +850,15 @@ function renderReport(report) {
     { label: "Total Current Assets", values: report.years.map((y) => y.workingCapital.totalCurrentAssets) },
     { label: "Total Current Liabilities", values: report.years.map((y) => y.workingCapital.totalCurrentLiabilities) },
     { label: "Net Working Capital", values: report.years.map((y) => y.workingCapital.netWorkingCapital) },
+    { label: "Working Capital Gap", values: report.years.map((y) => y.workingCapital.workingCapitalGap) },
+    { label: "Borrower Margin", values: report.years.map((y) => y.workingCapital.borrowerMargin) },
+    { label: "Bank Finance Required", values: report.years.map((y) => y.workingCapital.bankFinanceRequired) },
     { label: "Current Ratio", values: report.years.map((y) => y.workingCapital.currentRatio) },
   ];
 
   const ccRows = [
     { label: "Projected Sales", values: report.years.map((y) => y.workingCapital.projectedSales) },
-    { label: "Required Working Capital", values: report.years.map((y) => y.workingCapital.requiredWorkingCapital) },
+    { label: "Bank Finance Required", values: report.years.map((y) => y.workingCapital.requiredWorkingCapital) },
     { label: "Existing Limit", values: report.years.map((y) => y.workingCapital.existingLimit) },
     { label: "Shortfall", values: report.years.map((y) => y.workingCapital.shortfall) },
     { label: "Proposed CC Limit", values: report.years.map((y) => y.workingCapital.proposedLimit) },
@@ -740,7 +907,16 @@ function generateReport({ useCurrentMapping = false } = {}) {
     if (!workbookState.parsed) throw new Error(workbookState.parseError || "Upload workbook first.");
 
     const historicalLockMode = historicalLockModeInput?.checked !== false;
-    const { mapped, fallbackWarnings, fallbackDefaults, missingMandatory, historicalSources } = mappedFinancialsFromParse({ historicalLockMode });
+    const {
+      mapped,
+      fallbackWarnings,
+      fallbackDefaults,
+      missingMandatory,
+      historicalSources,
+      duplicateWarnings,
+      parentChildWarnings,
+      classificationReview,
+    } = mappedFinancialsFromParse({ historicalLockMode });
     if (missingMandatory.length) throw new Error(`Please map core heads: ${missingMandatory.join(", ")}`);
 
     workbookState.generated = {
@@ -754,11 +930,14 @@ function generateReport({ useCurrentMapping = false } = {}) {
           missingMandatory,
           fallbackAssignments: fallbackWarnings,
           fallbackDefaults,
+          duplicateAssignments: duplicateWarnings,
+          parentChildSuppression: parentChildWarnings,
         },
         historicalDebug: {
           values: mapped,
           sources: historicalSources,
         },
+        classificationReview,
       },
       ...buildCmaReport(mapped, { historicalLockMode }),
     };
@@ -781,7 +960,16 @@ function generateReport({ useCurrentMapping = false } = {}) {
     if (fallbackWarnings.length || fallbackDefaults.length) {
       output.insertAdjacentHTML("afterbegin", `<p class="hint"><strong>Report generated with fallback assumptions for unmapped heads.</strong></p>`);
     }
-    renderMappingWarnings({ fallbackWarnings, fallbackDefaults, missingMandatory });
+    if (workbookState.generated.termLoan.warning) {
+      output.insertAdjacentHTML("afterbegin", `<p class="bad"><strong>Term Loan Warning:</strong> ${workbookState.generated.termLoan.warning}</p>`);
+    }
+    renderMappingWarnings({
+      fallbackWarnings,
+      fallbackDefaults,
+      missingMandatory,
+      duplicateWarnings,
+      parentChildWarnings,
+    });
     downloadReportBtn.disabled = false;
     downloadExcelBtn.disabled = false;
     downloadJsonBtn.disabled = false;
@@ -929,12 +1117,15 @@ function downloadExcel() {
     ["Total Current Assets", ...periods.map(() => "")],
     ["Total Current Liabilities", ...periods.map(() => "")],
     ["Net Working Capital", ...periods.map(() => "")],
+    ["Working Capital Gap", ...periods.map(() => "")],
+    ["Borrower Margin", ...periods.map(() => "")],
+    ["Bank Finance Required", ...periods.map(() => "")],
     ["Current Ratio", ...periods.map(() => "")],
     [],
     ["CC Limit Assessment"],
     ["Particulars", ...periods],
     ["Projected Sales", ...years.map((y) => y.workingCapital.projectedSales)],
-    ["Required Working Capital", ...years.map((y) => y.workingCapital.requiredWorkingCapital)],
+    ["Bank Finance Required", ...years.map((y) => y.workingCapital.requiredWorkingCapital)],
     ["Existing Limit", ...years.map((y) => y.workingCapital.existingLimit)],
     ["Shortfall", ...years.map((y) => y.workingCapital.shortfall)],
     ["Proposed CC Limit", ...years.map((y) => y.workingCapital.proposedLimit)],
@@ -945,7 +1136,10 @@ function downloadExcel() {
     setFormula(wcWs, 3, c, `'Current Assets'!${toCell(8, c)}`, "₹#,##0");
     setFormula(wcWs, 4, c, `'Current Liabilities'!${toCell(6, c)}`, "₹#,##0");
     setFormula(wcWs, 5, c, `${toCell(3, c)}-${toCell(4, c)}`, "₹#,##0");
-    setFormula(wcWs, 6, c, `${toCell(3, c)}/${toCell(4, c)}`, "0.00");
+    setFormula(wcWs, 6, c, `${toCell(3, c)}-('Current Liabilities'!${toCell(4, c)}+'Current Liabilities'!${toCell(5, c)})`, "₹#,##0");
+    setFormula(wcWs, 7, c, `MAX(${toCell(5, c)},0)`, "₹#,##0");
+    setFormula(wcWs, 8, c, `MAX(${toCell(6, c)}-${toCell(7, c)},0)`, "₹#,##0");
+    setFormula(wcWs, 9, c, `${toCell(3, c)}/${toCell(4, c)}`, "0.00");
   });
 
   const ratioLabels = ["Current Ratio", "Quick Ratio", "GP Ratio", "NP Ratio", "TOL / TNW", "Debtor Days", "Creditor Days", "Inventory Days", "Interest Coverage", "DSCR"];
@@ -953,7 +1147,7 @@ function downloadExcel() {
 
   periods.forEach((_, idx) => {
     const c = idx + 2;
-    setFormula(ratioWs, 3, c, `'Working Capital'!${toCell(6, c)}`, "0.00");
+    setFormula(ratioWs, 3, c, `'Working Capital'!${toCell(9, c)}`, "0.00");
     setFormula(ratioWs, 4, c, `('Balance Sheet'!${toCell(24, c)}-'Balance Sheet'!${toCell(19, c)})/'Balance Sheet'!${toCell(13, c)}`, "0.00");
     setFormula(ratioWs, 5, c, `'Profit & Loss'!${toCell(11, c)}/'Profit & Loss'!${toCell(3, c)}*100`, "0.00");
     setFormula(ratioWs, 6, c, `'Profit & Loss'!${toCell(22, c)}/'Profit & Loss'!${toCell(3, c)}*100`, "0.00");
