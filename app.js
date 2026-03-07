@@ -926,6 +926,49 @@ function buildSectionHtml(title, periods, rows, formatter = fmtCurrency) {
   return `<section class="report-section"><h3>${title}</h3><table><thead>${head}</thead><tbody>${body}</tbody></table></section>`;
 }
 
+function buildCmaFormatSectionHtml(title, periods, rows, formatter = fmtCurrency) {
+  const head = `<tr><th>Particulars</th>${periods.map((period) => `<th>${period}</th>`).join("")}</tr>`;
+  const body = rows.map((row) => {
+    const rowClass = row.rowClass ? ` class='${row.rowClass}'` : "";
+    const labelClass = row.indentLevel ? ` class='indent-${row.indentLevel}'` : "";
+    const values = (row.values || periods.map(() => null)).map((value) => `<td>${value === null ? "" : formatter(value, row.label)}</td>`).join("");
+    return `<tr${rowClass}><td${labelClass}>${row.label}</td>${values}</tr>`;
+  }).join("");
+  return `<section class="report-section"><h3>${title}</h3><table><thead>${head}</thead><tbody>${body}</tbody></table></section>`;
+}
+
+function buildCmaProfitabilityRows(report) {
+  return [
+    { label: "1. Gross Income", rowClass: "section-row", values: [] },
+    { label: "(i) Sales (Net of Returns)", indentLevel: 1, values: report.years.map((y) => y.pl.Sales) },
+    { label: "(ii) Other Income", indentLevel: 1, values: report.years.map((y) => y.pl["Other Income"]) },
+    { label: "(iii) Total (i)+(ii)", indentLevel: 1, rowClass: "total-row", values: report.years.map((y) => y.pl["Total Income"]) },
+    { label: "2. Cost of Sales", rowClass: "section-row", values: [] },
+    { label: "(i) Purchases", indentLevel: 1, values: report.years.map((y) => y.pl.Purchases) },
+    { label: "(ii) Other Trading Expenses", indentLevel: 1, values: report.years.map((y) => y.pl["Direct Expenses"]) },
+    { label: "(iii) Sub-Total (i)+(ii)", indentLevel: 1, values: report.years.map((y) => y.pl.Purchases + y.pl["Direct Expenses"]) },
+    { label: "(iv) Add: Opening Stock", indentLevel: 1, values: report.years.map((y) => y.pl["Opening Stock"]) },
+    { label: "(v) Sub-Total (iii)+(iv)", indentLevel: 1, values: report.years.map((y) => y.pl["Goods Available for Sale"]) },
+    { label: "(vi) Less: Closing Stock", indentLevel: 1, values: report.years.map((y) => y.pl["Less Closing Stock"]) },
+    { label: "(vii) Sub-Total (Total Cost of Sales) (v-vi)", indentLevel: 1, rowClass: "total-row", values: report.years.map((y) => y.pl["Cost of Goods Sold"]) },
+    {
+      label: "3. Selling General & Administrative Expenses",
+      values: report.years.map((y) => y.pl["Employee Cost"] + y.pl["Administrative Expenses"] + y.pl["Selling Expenses"] + y.pl["Other Operating Expenses"]),
+    },
+    { label: "4. Operating Profit (Before Interest & Depreciation) [1(iii)-2(vii)-3]", rowClass: "total-row", values: report.years.map((y) => y.pl.EBITDA) },
+    { label: "5. Interest", values: report.years.map((y) => y.pl.Interest) },
+    { label: "6. Depreciation", values: report.years.map((y) => y.pl.Depreciation) },
+    { label: "7. Operating Profit (After Interest & Depreciation) (4-5-6)", rowClass: "total-row", values: report.years.map((y) => y.pl["Profit Before Tax"]) },
+    { label: "8. Net of Other Non-Operating Income / Expenses", values: report.years.map(() => 0) },
+    { label: "9. Profit Before Tax / Loss [7+8]", rowClass: "total-row", values: report.years.map((y) => y.pl["Profit Before Tax"]) },
+    { label: "10. Provision for Taxes", values: report.years.map((y) => y.pl.Tax) },
+    { label: "11. Net Profit / Loss (9-10)", rowClass: "total-row", values: report.years.map((y) => y.pl["Profit After Tax"]) },
+    { label: "12. Equity Dividend Paid", values: report.years.map(() => 0) },
+    { label: "13. Retained Profit (11-12)", rowClass: "total-row", values: report.years.map((y) => y.pl["Profit After Tax"]) },
+    { label: "14. Retained Profit / Net Profit (%)", values: report.years.map((y) => (y.pl["Profit After Tax"] === 0 ? 0 : 100)), rowClass: "pct-row" },
+  ];
+}
+
 function buildHistoricalDebugHtml(report) {
   const fieldLabel = Object.fromEntries(MAP_FIELDS.map((f) => [f.key, f.label]));
   const debugRows = Object.entries(report.meta?.historicalDebug?.sources || {}).flatMap(([key, sources]) => {
@@ -967,13 +1010,7 @@ function renderReport(report) {
     .map(([key, value]) => `<tr><td>${key}</td><td>${typeof value === "number" ? fmtCurrency(value) : value}</td></tr>`)
     .join("");
 
-  const plRows = buildStatementRows(report.years, "pl", [
-    "INCOME", "Sales", "Other Income", "Total Income",
-    "COST OF GOODS SOLD", "Opening Stock", "Purchases", "Direct Expenses", "Goods Available for Sale", "Less Closing Stock", "Cost of Goods Sold",
-    "Gross Profit",
-    "OPERATING EXPENSES", "Employee Cost", "Administrative Expenses", "Selling Expenses", "Other Operating Expenses", "Total Operating Expenses",
-    "EBITDA", "FINANCIAL CHARGES", "Interest", "Depreciation", "Profit Before Tax", "Tax", "Profit After Tax",
-  ]);
+  const plRows = buildCmaProfitabilityRows(report);
 
   const bsRows = buildStatementRows(report.years, "bs", [
     "CAPITAL & LIABILITIES", "Capital", "Reserves", "Net Worth",
@@ -1027,7 +1064,7 @@ function renderReport(report) {
       <header class="report-header"><h2>Banker Grade CMA Report</h2></header>
       <section class="report-section"><h3>Summary</h3><table><tbody>${summaryRows}</tbody></table></section>
       ${historicalDebugHtml}
-      ${buildSectionHtml("Profit & Loss", periods, plRows, (value, label) => (label.includes("Ratio") ? fmtNumber(value) : fmtCurrency(value)))}
+      ${buildCmaFormatSectionHtml("Profitability Statement (CMA Format)", periods, plRows, (value, label) => (label.includes("(%)") ? fmtPct(value) : fmtCurrency(value)))}
       ${buildSectionHtml("Balance Sheet", periods, bsRows)}
       ${buildSectionHtml("Working Capital", periods, wcRows, (value, label) => (label.includes("Ratio") ? fmtNumber(value) : fmtCurrency(value)))}
       ${buildSectionHtml("CC Limit Assessment (Tandon Method II)", periods, ccRows)}
