@@ -62,6 +62,23 @@ const MAP_FIELDS = [
   { key: "otherCurrentAssets", label: "Other Current Assets", section: "bs", aliases: ["othercurrentassets", "prepaidexpenses"] },
 ];
 
+const CORE_REQUIRED_FIELDS = ["sales", "purchases", "closingStock", "tradeReceivables", "tradeCreditors", "capital", "fixedAssets", "cashBank"];
+
+const DEFAULT_FALLBACKS = {
+  otherIncome: { value: 0, note: "Default 0" },
+  openingStock: { value: 0, note: "Default 0" },
+  otherOperatingExpenses: { value: 0, note: "Default 0" },
+  depreciation: { value: 0, note: "Default 0" },
+  tax: { value: 0, note: "Default 0" },
+  reserves: { value: 0, note: "Default 0" },
+  termLoan: { value: 0, note: "Default 0 (Not Applicable)" },
+  unsecuredLoans: { value: 0, note: "Default 0" },
+  otherLongTermLiabilities: { value: 0, note: "Default 0" },
+  investments: { value: 0, note: "Default 0" },
+  otherNonCurrentAssets: { value: 0, note: "Default 0" },
+  loansAdvances: { value: 0, note: "Default 0" },
+};
+
 fileInput.addEventListener("change", handleWorkbookUpload);
 generateBtn.addEventListener("click", () => generateReport({ useCurrentMapping: false }));
 generateCurrentBtn.addEventListener("click", () => generateReport({ useCurrentMapping: true }));
@@ -248,7 +265,32 @@ function mappedFinancialsFromParse() {
     mapped[field.key] = getMappedAmount(workbookState.mapping[field.key], field.section);
   });
 
-  const mandatory = ["sales", "purchases", "inventory", "tradeReceivables", "tradeCreditors", "capital", "fixedAssets", "cashBank"];
+  const fallbackDefaults = [];
+
+  Object.entries(DEFAULT_FALLBACKS).forEach(([key, fallback]) => {
+    const selectedHead = workbookState.mapping[key];
+    if (!selectedHead) {
+      mapped[key] = fallback.value;
+      const field = MAP_FIELDS.find((f) => f.key === key);
+      fallbackDefaults.push({
+        key,
+        label: field?.label || key,
+        value: fallback.value,
+        note: fallback.note,
+      });
+    }
+  });
+
+  // If Closing Stock is not mapped from P&L but Inventory is mapped from BS, reuse it for core coverage.
+  if (!workbookState.mapping.closingStock && workbookState.mapping.inventory) {
+    mapped.closingStock = mapped.inventory;
+    fallbackDefaults.push({
+      key: "closingStock",
+      label: "Closing Stock",
+      value: mapped.inventory,
+      note: "Reused mapped Inventory",
+    });
+  }
   const mappedHeadsBySection = {
     pl: new Set(MAP_FIELDS.filter((f) => f.section === "pl").map((f) => workbookState.mapping[f.key]).filter(Boolean)),
     bs: new Set(MAP_FIELDS.filter((f) => f.section === "bs").map((f) => workbookState.mapping[f.key]).filter(Boolean)),
@@ -269,11 +311,11 @@ function mappedFinancialsFromParse() {
       });
     });
 
-  const missingMandatory = mandatory
-    .filter((key) => !mapped[key])
+  const missingMandatory = CORE_REQUIRED_FIELDS
+    .filter((key) => !workbookState.mapping[key] && !(key === "closingStock" && workbookState.mapping.inventory))
     .map((key) => MAP_FIELDS.find((f) => f.key === key)?.label || key);
 
-  return { mapped, fallbackWarnings, missingMandatory };
+  return { mapped, fallbackWarnings, fallbackDefaults, missingMandatory };
 }
 
 function classifyFallbackBucket(head) {
@@ -293,8 +335,8 @@ function classifyFallbackBucket(head) {
   return "otherNonCurrentAssets";
 }
 
-function renderMappingWarnings({ fallbackWarnings = [], missingMandatory = [] } = {}) {
-  if (!fallbackWarnings.length && !missingMandatory.length) {
+function renderMappingWarnings({ fallbackWarnings = [], fallbackDefaults = [], missingMandatory = [] } = {}) {
+  if (!fallbackWarnings.length && !fallbackDefaults.length && !missingMandatory.length) {
     mappingWarningPanel.classList.add("hidden");
     mappingWarningPanel.innerHTML = "";
     return;
@@ -303,11 +345,15 @@ function renderMappingWarnings({ fallbackWarnings = [], missingMandatory = [] } 
   const fallbackItems = fallbackWarnings
     .map((item) => `<li><strong>${item.head}</strong> (${item.section.toUpperCase()}, ${fmtCurrency(item.amount)}) → <strong>${item.fallbackLabel}</strong></li>`)
     .join("");
+  const defaultItems = fallbackDefaults
+    .map((item) => `<li><strong>${item.label}</strong> → ${fmtCurrency(item.value)} <em>(${item.note})</em></li>`)
+    .join("");
   const mandatoryItems = missingMandatory.map((item) => `<li>${item}</li>`).join("");
 
   mappingWarningPanel.innerHTML = `
     <h3>⚠️ Mapping Warnings</h3>
-    ${missingMandatory.length ? `<p><strong>Missing mandatory heads (used as zero):</strong></p><ul>${mandatoryItems}</ul>` : ""}
+    ${missingMandatory.length ? `<p><strong>Missing core heads (generation blocked):</strong></p><ul>${mandatoryItems}</ul>` : ""}
+    ${fallbackDefaults.length ? `<p><strong>Fallback defaults applied:</strong></p><ul>${defaultItems}</ul>` : ""}
     ${fallbackWarnings.length ? `<p><strong>Unmapped heads assigned to fallback buckets:</strong></p><ul>${fallbackItems}</ul>` : ""}
   `;
   mappingWarningPanel.classList.remove("hidden");
@@ -605,7 +651,9 @@ function generateReport({ useCurrentMapping = false } = {}) {
   try {
     if (!workbookState.parsed) throw new Error(workbookState.parseError || "Upload workbook first.");
 
-    const { mapped, fallbackWarnings, missingMandatory } = mappedFinancialsFromParse();
+    const { mapped, fallbackWarnings, fallbackDefaults, missingMandatory } = mappedFinancialsFromParse();
+    if (missingMandatory.length) throw new Error(`Please map core heads: ${missingMandatory.join(", ")}`);
+
     workbookState.generated = {
       meta: {
         sourcePL: workbookState.parsed.plSheetName,
@@ -615,6 +663,7 @@ function generateReport({ useCurrentMapping = false } = {}) {
         warnings: {
           missingMandatory,
           fallbackAssignments: fallbackWarnings,
+          fallbackDefaults,
         },
       },
       ...buildCmaReport(mapped),
@@ -635,7 +684,10 @@ function generateReport({ useCurrentMapping = false } = {}) {
     });
 
     renderReport(workbookState.generated);
-    renderMappingWarnings({ fallbackWarnings, missingMandatory });
+    if (fallbackWarnings.length || fallbackDefaults.length) {
+      output.insertAdjacentHTML("afterbegin", `<p class="hint"><strong>Report generated with fallback assumptions for unmapped heads.</strong></p>`);
+    }
+    renderMappingWarnings({ fallbackWarnings, fallbackDefaults, missingMandatory });
     downloadReportBtn.disabled = false;
     downloadExcelBtn.disabled = false;
     downloadJsonBtn.disabled = false;
