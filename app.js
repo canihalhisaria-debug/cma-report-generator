@@ -639,14 +639,14 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
     const goodsAvailable = openingStock + purchases + directExpenses;
     const cogs = goodsAvailable - closingStock;
     const totalIncome = sales + otherIncome;
-    const grossProfit = totalIncome - cogs;
+    const grossProfit = sales - cogs;
 
     const employeeCost = isHistoricalYear ? mapped.employeeCost : sales * employeePct;
     const administrativeExpenses = isHistoricalYear ? mapped.adminExpenses : sales * adminPct;
     const sellingExpenses = isHistoricalYear ? mapped.sellingExpenses : sales * sellingPct;
     const otherOperatingExpenses = isHistoricalYear ? mapped.otherOperatingExpenses : sales * 0.01;
     const totalOperatingExpenses = employeeCost + administrativeExpenses + sellingExpenses + otherOperatingExpenses;
-    const ebitda = grossProfit - totalOperatingExpenses;
+    const ebitda = grossProfit + otherIncome - totalOperatingExpenses;
 
     const tlInterest = termLoan.applicable ? termLoan.rows[idx].interest : 0;
     const wcInterest = existingCCLimit * 0.11;
@@ -657,7 +657,8 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
       ? mapped.depreciation
       : Math.max(prev.bs["Fixed Assets"] * deprPct, sales * 0.01);
 
-    const pbt = ebitda - interest - depreciation;
+    const ebit = ebitda - depreciation;
+    const pbt = ebit - interest;
     const tax = isHistoricalYear ? mapped.tax : Math.max(pbt, 0) * taxPct;
     const pat = pbt - tax;
 
@@ -687,15 +688,8 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
     const otherCurrentAssets = isHistoricalYear ? mapped.otherCurrentAssets : sales * 0.01;
     const totalCurrentAssets = inventory + tradeReceivables + cashBank + loansAdvances + otherCurrentAssets;
 
-    let totalLiabilities = netWorth + totalNonCurrentLiabilities + totalCurrentLiabilities;
-    let totalAssets = totalNonCurrentAssets + totalCurrentAssets;
-
-    if (isHistoricalYear && historicalLockMode) {
-      const historicalGap = totalLiabilities - totalAssets;
-      if (Math.abs(historicalGap) > 0.5) {
-        totalAssets += historicalGap;
-      }
-    }
+    const totalLiabilities = netWorth + totalNonCurrentLiabilities + totalCurrentLiabilities;
+    const totalAssets = totalNonCurrentAssets + totalCurrentAssets;
 
     const netWorkingCapital = totalCurrentAssets - totalCurrentLiabilities;
     const otherCurrentLiabilitiesOnly = tradeCreditors + otherCurrentLiabilities;
@@ -727,6 +721,7 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
         "Other Operating Expenses": otherOperatingExpenses,
         "Total Operating Expenses": totalOperatingExpenses,
         EBITDA: ebitda,
+        EBIT: ebit,
         Interest: interest,
         Depreciation: depreciation,
         "Profit Before Tax": pbt,
@@ -898,7 +893,7 @@ function renderReport(report) {
     "Debtor Days": safeDivide(y.bs["Trade Receivables"], y.pl.Sales) * 365,
     "Creditor Days": safeDivide(y.bs["Trade Creditors"], y.pl.Purchases) * 365,
     "Inventory Days": safeDivide(y.bs.Inventory, y.pl["Cost of Goods Sold"]) * 365,
-    "Interest Coverage": safeDivide(y.pl.EBITDA, y.pl.Interest),
+    "Interest Coverage": safeDivide(y.pl.EBIT, y.pl.Interest),
     DSCR: y.dscr,
   }));
   const ratioLabels = Object.keys(ratioRows[0]);
@@ -1070,57 +1065,81 @@ function downloadExcel() {
   ]);
 
   const plLabels = [
-    "Net Sales",
+    "Sales",
+    "Other Income",
+    "Total Income",
+    "Opening Stock",
     "Purchases",
     "Direct Expenses",
+    "Closing Stock",
     "COGS",
     "Gross Profit",
     "Operating Expenses",
+    "EBITDA",
+    "Depreciation",
     "EBIT",
     "Interest",
-    "Net Profit",
+    "PBT",
+    "Tax",
+    "PAT",
   ];
 
   const bsLabels = [
-    "Fixed Assets",
-    "Inventory",
-    "Debtors",
-    "Cash & Bank",
-    "Other Current Assets",
-    "Total Assets",
-    "Capital",
+    "Capital / Net Worth",
     "Term Loan",
-    "Creditors",
-    "Short Term Borrowings",
+    "Unsecured Loans",
+    "Other Long Term Liabilities",
+    "CC / Bank OD",
+    "Trade Creditors",
     "Other Current Liabilities",
     "Total Liabilities",
+    "Fixed Assets",
+    "Investments",
+    "Other Non Current Assets",
+    "Inventory",
+    "Trade Receivables",
+    "Cash / Bank",
+    "Advances / Deposits / Other Current Assets",
+    "Total Assets",
   ];
 
   const plRows = years.map((y) => ({
-    "Net Sales": y.pl.Sales,
+    Sales: y.pl.Sales,
+    "Other Income": y.pl["Other Income"],
+    "Total Income": "",
+    "Opening Stock": y.pl["Opening Stock"],
     Purchases: y.pl.Purchases,
     "Direct Expenses": y.pl["Direct Expenses"],
+    "Closing Stock": y.pl["Less Closing Stock"],
     COGS: "",
     "Gross Profit": "",
     "Operating Expenses": y.pl["Total Operating Expenses"],
+    EBITDA: "",
+    Depreciation: y.pl.Depreciation,
     EBIT: "",
     Interest: y.pl.Interest,
-    "Net Profit": "",
+    PBT: "",
+    Tax: y.pl.Tax,
+    PAT: "",
   }));
 
   const bsRows = years.map((y) => ({
-    "Fixed Assets": y.bs["Fixed Assets"],
-    Inventory: y.bs.Inventory,
-    Debtors: y.bs["Trade Receivables"],
-    "Cash & Bank": y.bs["Cash & Bank"],
-    "Other Current Assets": y.bs["Other Current Assets"],
-    "Total Assets": "",
-    Capital: y.bs.Capital,
+    "Capital / Net Worth": y.bs["Net Worth"],
     "Term Loan": y.bs["Term Loan"],
-    Creditors: y.bs["Trade Creditors"],
-    "Short Term Borrowings": y.bs["CC / Bank OD"],
+    "Unsecured Loans": y.bs["Unsecured Loans"],
+    "Other Long Term Liabilities": y.bs["Other Long Term Liabilities"],
+    "CC / Bank OD": y.bs["CC / Bank OD"],
+    "Trade Creditors": y.bs["Trade Creditors"],
     "Other Current Liabilities": y.bs["Other Current Liabilities"],
     "Total Liabilities": "",
+    "Fixed Assets": y.bs["Fixed Assets"],
+    Investments: y.bs.Investments,
+    "Other Non Current Assets": y.bs["Other Non Current Assets"],
+    Inventory: y.bs.Inventory,
+    "Trade Receivables": y.bs["Trade Receivables"],
+    "Cash / Bank": y.bs["Cash & Bank"],
+    "Advances / Deposits / Other Current Assets": (y.bs["Loans & Advances"] || 0) + (y.bs["Other Current Assets"] || 0),
+    "Total Assets": "",
   }));
 
   const plWs = makeSheet("Profit & Loss", periods, plRows, plLabels);
@@ -1130,40 +1149,67 @@ function downloadExcel() {
 
   periods.forEach((_, idx) => {
     const col = idx + 2;
-    setFormula(plWs, plRow.COGS, col, `${toCell(plRow.Purchases, col)}+${toCell(plRow["Direct Expenses"], col)}`, "₹#,##0");
-    setFormula(plWs, plRow["Gross Profit"], col, `${toCell(plRow["Net Sales"], col)}-${toCell(plRow.COGS, col)}`, "₹#,##0");
-    setFormula(plWs, plRow.EBIT, col, `${toCell(plRow["Gross Profit"], col)}-${toCell(plRow["Operating Expenses"], col)}`, "₹#,##0");
-    setFormula(plWs, plRow["Net Profit"], col, `${toCell(plRow.EBIT, col)}-${toCell(plRow.Interest, col)}`, "₹#,##0");
+    setFormula(plWs, plRow["Total Income"], col, `${toCell(plRow.Sales, col)}+${toCell(plRow["Other Income"], col)}`, "₹#,##0");
+    setFormula(plWs, plRow.COGS, col, `${toCell(plRow["Opening Stock"], col)}+${toCell(plRow.Purchases, col)}+${toCell(plRow["Direct Expenses"], col)}-${toCell(plRow["Closing Stock"], col)}`, "₹#,##0");
+    setFormula(plWs, plRow["Gross Profit"], col, `${toCell(plRow.Sales, col)}-${toCell(plRow.COGS, col)}`, "₹#,##0");
+    setFormula(plWs, plRow.EBITDA, col, `${toCell(plRow["Gross Profit"], col)}+${toCell(plRow["Other Income"], col)}-${toCell(plRow["Operating Expenses"], col)}`, "₹#,##0");
+    setFormula(plWs, plRow.EBIT, col, `${toCell(plRow.EBITDA, col)}-${toCell(plRow.Depreciation, col)}`, "₹#,##0");
+    setFormula(plWs, plRow.PBT, col, `${toCell(plRow.EBIT, col)}-${toCell(plRow.Interest, col)}`, "₹#,##0");
+    setFormula(plWs, plRow.PAT, col, `${toCell(plRow.PBT, col)}-${toCell(plRow.Tax, col)}`, "₹#,##0");
 
-    setFormula(bsWs, bsRow["Total Assets"], col, `${toCell(bsRow["Fixed Assets"], col)}+${toCell(bsRow.Inventory, col)}+${toCell(bsRow.Debtors, col)}+${toCell(bsRow["Cash & Bank"], col)}+${toCell(bsRow["Other Current Assets"], col)}`, "₹#,##0");
-    setFormula(bsWs, bsRow["Total Liabilities"], col, `${toCell(bsRow.Capital, col)}+${toCell(bsRow["Term Loan"], col)}+${toCell(bsRow.Creditors, col)}+${toCell(bsRow["Short Term Borrowings"], col)}+${toCell(bsRow["Other Current Liabilities"], col)}`, "₹#,##0");
+    setFormula(bsWs, bsRow["Total Liabilities"], col, `${toCell(bsRow["Capital / Net Worth"], col)}+${toCell(bsRow["Term Loan"], col)}+${toCell(bsRow["Unsecured Loans"], col)}+${toCell(bsRow["Other Long Term Liabilities"], col)}+${toCell(bsRow["CC / Bank OD"], col)}+${toCell(bsRow["Trade Creditors"], col)}+${toCell(bsRow["Other Current Liabilities"], col)}`, "₹#,##0");
+    setFormula(bsWs, bsRow["Total Assets"], col, `${toCell(bsRow["Fixed Assets"], col)}+${toCell(bsRow.Investments, col)}+${toCell(bsRow["Other Non Current Assets"], col)}+${toCell(bsRow.Inventory, col)}+${toCell(bsRow["Trade Receivables"], col)}+${toCell(bsRow["Cash / Bank"], col)}+${toCell(bsRow["Advances / Deposits / Other Current Assets"], col)}`, "₹#,##0");
   });
 
   applyCurrencyFormat(plWs);
   applyCurrencyFormat(bsWs);
 
+  const caWs = XLSX.utils.aoa_to_sheet([
+    ["Current Assets"],
+    ["Particulars", ...periods],
+    ["Inventory", ...years.map((y) => y.bs.Inventory)],
+    ["Trade Receivables", ...years.map((y) => y.bs["Trade Receivables"])],
+    ["Cash / Bank", ...years.map((y) => y.bs["Cash & Bank"])],
+    ["Loans & Advances", ...years.map((y) => y.bs["Loans & Advances"])],
+    ["Other Current Assets", ...years.map((y) => y.bs["Other Current Assets"])],
+    ["Total Current Assets", ...periods.map(() => "")],
+  ]);
+  const caLabels = ["Inventory", "Trade Receivables", "Cash / Bank", "Loans & Advances", "Other Current Assets", "Total Current Assets"];
+  const caRow = buildRowLookup(caLabels);
+  periods.forEach((_, idx) => {
+    const c = idx + 2;
+    setFormula(caWs, caRow["Total Current Assets"], c, `${toCell(caRow.Inventory, c)}+${toCell(caRow["Trade Receivables"], c)}+${toCell(caRow["Cash / Bank"], c)}+${toCell(caRow["Loans & Advances"], c)}+${toCell(caRow["Other Current Assets"], c)}`, "₹#,##0");
+  });
+
+  const clWs = XLSX.utils.aoa_to_sheet([
+    ["Current Liabilities"],
+    ["Particulars", ...periods],
+    ["CC / Bank OD", ...years.map((y) => y.bs["CC / Bank OD"])],
+    ["Trade Creditors", ...years.map((y) => y.bs["Trade Creditors"])],
+    ["Other Current Liabilities", ...years.map((y) => y.bs["Other Current Liabilities"])],
+    ["Total Current Liabilities", ...periods.map(() => "")],
+  ]);
+  const clLabels = ["CC / Bank OD", "Trade Creditors", "Other Current Liabilities", "Total Current Liabilities"];
+  const clRow = buildRowLookup(clLabels);
+  periods.forEach((_, idx) => {
+    const c = idx + 2;
+    setFormula(clWs, clRow["Total Current Liabilities"], c, `${toCell(clRow["CC / Bank OD"], c)}+${toCell(clRow["Trade Creditors"], c)}+${toCell(clRow["Other Current Liabilities"], c)}`, "₹#,##0");
+  });
+
   const wcWs = XLSX.utils.aoa_to_sheet([
     ["Working Capital"],
     ["Particulars", ...periods],
-    ["Inventory", ...years.map((y) => y.bs.Inventory)],
-    ["Debtors", ...years.map((y) => y.bs["Trade Receivables"])],
-    ["Cash & Bank", ...years.map((y) => y.bs["Cash & Bank"])],
-    ["Other Current Assets", ...years.map((y) => y.bs["Other Current Assets"])],
-    ["Current Assets", ...periods.map(() => "")],
-    ["Creditors", ...years.map((y) => y.bs["Trade Creditors"])],
-    ["Short Term Borrowings", ...years.map((y) => y.bs["CC / Bank OD"])],
-    ["Other Current Liabilities", ...years.map((y) => y.bs["Other Current Liabilities"])],
-    ["Current Liabilities", ...periods.map(() => "")],
+    ["Total Current Assets", ...periods.map(() => "")],
+    ["Total Current Liabilities", ...periods.map(() => "")],
     ["Working Capital", ...periods.map(() => "")],
   ]);
-  const wcLabels = ["Inventory", "Debtors", "Cash & Bank", "Other Current Assets", "Current Assets", "Creditors", "Short Term Borrowings", "Other Current Liabilities", "Current Liabilities", "Working Capital"];
+  const wcLabels = ["Total Current Assets", "Total Current Liabilities", "Working Capital"];
   const wcRow = buildRowLookup(wcLabels);
-
   periods.forEach((_, idx) => {
     const c = idx + 2;
-    setFormula(wcWs, wcRow["Current Assets"], c, `${toCell(wcRow.Inventory, c)}+${toCell(wcRow.Debtors, c)}+${toCell(wcRow["Cash & Bank"], c)}+${toCell(wcRow["Other Current Assets"], c)}`, "₹#,##0");
-    setFormula(wcWs, wcRow["Current Liabilities"], c, `${toCell(wcRow.Creditors, c)}+${toCell(wcRow["Short Term Borrowings"], c)}+${toCell(wcRow["Other Current Liabilities"], c)}`, "₹#,##0");
-    setFormula(wcWs, wcRow["Working Capital"], c, `${toCell(wcRow["Current Assets"], c)}-${toCell(wcRow["Current Liabilities"], c)}`, "₹#,##0");
+    setFormula(wcWs, wcRow["Total Current Assets"], c, `'Current Assets'!${toCell(caRow["Total Current Assets"], c)}`, "₹#,##0");
+    setFormula(wcWs, wcRow["Total Current Liabilities"], c, `'Current Liabilities'!${toCell(clRow["Total Current Liabilities"], c)}`, "₹#,##0");
+    setFormula(wcWs, wcRow["Working Capital"], c, `${toCell(wcRow["Total Current Assets"], c)}-${toCell(wcRow["Total Current Liabilities"], c)}`, "₹#,##0");
   });
 
   const ratioLabels = ["Current Ratio", "Quick Ratio", "GP Ratio", "NP Ratio", "Debtor Days", "Creditor Days", "Inventory Days", "Interest Coverage"];
@@ -1172,13 +1218,13 @@ function downloadExcel() {
 
   periods.forEach((_, idx) => {
     const c = idx + 2;
-    setFormula(ratioWs, ratioRow["Current Ratio"], c, `'Working Capital'!${toCell(wcRow["Current Assets"], c)}/'Working Capital'!${toCell(wcRow["Current Liabilities"], c)}`, "0.00");
-    setFormula(ratioWs, ratioRow["Quick Ratio"], c, `('Working Capital'!${toCell(wcRow["Current Assets"], c)}-'Working Capital'!${toCell(wcRow.Inventory, c)})/'Working Capital'!${toCell(wcRow["Current Liabilities"], c)}`, "0.00");
-    setFormula(ratioWs, ratioRow["GP Ratio"], c, `'Profit & Loss'!${toCell(plRow["Gross Profit"], c)}/'Profit & Loss'!${toCell(plRow["Net Sales"], c)}*100`, "0.00");
-    setFormula(ratioWs, ratioRow["NP Ratio"], c, `'Profit & Loss'!${toCell(plRow["Net Profit"], c)}/'Profit & Loss'!${toCell(plRow["Net Sales"], c)}*100`, "0.00");
-    setFormula(ratioWs, ratioRow["Debtor Days"], c, `'Working Capital'!${toCell(wcRow.Debtors, c)}/'Profit & Loss'!${toCell(plRow["Net Sales"], c)}*365`, "0.00");
-    setFormula(ratioWs, ratioRow["Creditor Days"], c, `'Working Capital'!${toCell(wcRow.Creditors, c)}/'Profit & Loss'!${toCell(plRow.Purchases, c)}*365`, "0.00");
-    setFormula(ratioWs, ratioRow["Inventory Days"], c, `'Working Capital'!${toCell(wcRow.Inventory, c)}/'Profit & Loss'!${toCell(plRow.COGS, c)}*365`, "0.00");
+    setFormula(ratioWs, ratioRow["Current Ratio"], c, `'Current Assets'!${toCell(caRow["Total Current Assets"], c)}/'Current Liabilities'!${toCell(clRow["Total Current Liabilities"], c)}`, "0.00");
+    setFormula(ratioWs, ratioRow["Quick Ratio"], c, `('Current Assets'!${toCell(caRow["Total Current Assets"], c)}-'Current Assets'!${toCell(caRow.Inventory, c)})/'Current Liabilities'!${toCell(clRow["Total Current Liabilities"], c)}`, "0.00");
+    setFormula(ratioWs, ratioRow["GP Ratio"], c, `'Profit & Loss'!${toCell(plRow["Gross Profit"], c)}/'Profit & Loss'!${toCell(plRow.Sales, c)}*100`, "0.00");
+    setFormula(ratioWs, ratioRow["NP Ratio"], c, `'Profit & Loss'!${toCell(plRow.PAT, c)}/'Profit & Loss'!${toCell(plRow.Sales, c)}*100`, "0.00");
+    setFormula(ratioWs, ratioRow["Debtor Days"], c, `'Current Assets'!${toCell(caRow["Trade Receivables"], c)}/'Profit & Loss'!${toCell(plRow.Sales, c)}*365`, "0.00");
+    setFormula(ratioWs, ratioRow["Creditor Days"], c, `'Current Liabilities'!${toCell(clRow["Trade Creditors"], c)}/'Profit & Loss'!${toCell(plRow.Purchases, c)}*365`, "0.00");
+    setFormula(ratioWs, ratioRow["Inventory Days"], c, `'Current Assets'!${toCell(caRow.Inventory, c)}/'Profit & Loss'!${toCell(plRow.COGS, c)}*365`, "0.00");
     setFormula(ratioWs, ratioRow["Interest Coverage"], c, `'Profit & Loss'!${toCell(plRow.EBIT, c)}/'Profit & Loss'!${toCell(plRow.Interest, c)}`, "0.00");
   });
 
@@ -1209,6 +1255,8 @@ function downloadExcel() {
     ["Average DSCR", "", "", "", "", workbookState.generated.avgDscr || "", workbookState.generated.avgDscr === null ? "N/A" : (workbookState.generated.avgDscr >= 1.25 ? "Acceptable" : "Warning")],
   ]);
 
+  applyCurrencyFormat(caWs);
+  applyCurrencyFormat(clWs);
   applyCurrencyFormat(wcWs);
   applyCurrencyFormat(tlWs);
   applyCurrencyFormat(dscrWs);
@@ -1216,6 +1264,8 @@ function downloadExcel() {
   XLSX.utils.book_append_sheet(wb, assumptions, "Assumptions");
   XLSX.utils.book_append_sheet(wb, plWs, "Profit & Loss");
   XLSX.utils.book_append_sheet(wb, bsWs, "Balance Sheet");
+  XLSX.utils.book_append_sheet(wb, caWs, "Current Assets");
+  XLSX.utils.book_append_sheet(wb, clWs, "Current Liabilities");
   XLSX.utils.book_append_sheet(wb, wcWs, "Working Capital");
   XLSX.utils.book_append_sheet(wb, ratioWs, "Ratios");
   XLSX.utils.book_append_sheet(wb, tlWs, "Term Loan");
