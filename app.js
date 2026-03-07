@@ -66,6 +66,47 @@ const MAP_FIELDS = [
 
 const CORE_REQUIRED_FIELDS = ["sales", "purchases", "closingStock", "tradeReceivables", "tradeCreditors", "capital", "fixedAssets", "cashBank"];
 
+const STANDARD_CMA_HEADS = {
+  netSales: "Net Sales",
+  openingStock: "Opening Stock",
+  purchases: "Purchases",
+  closingStock: "Closing Stock",
+  directExpenses: "Direct Expenses",
+  otherIncome: "Other Income",
+  operatingExpenses: "Operating Expenses",
+  interest: "Interest",
+  debtors: "Debtors",
+  inventory: "Inventory",
+  cashBank: "Cash & Bank",
+  otherCurrentAssets: "Other Current Assets",
+  creditors: "Creditors",
+  otherCurrentLiabilities: "Other Current Liabilities",
+  shortTermBorrowings: "Short Term Borrowings",
+  capital: "Capital",
+  fixedAssets: "Fixed Assets",
+  nonCurrentOtherAssets: "Non-current / Other Assets",
+};
+
+const CMA_HEAD_TO_FIELD_KEY = {
+  [STANDARD_CMA_HEADS.netSales]: "sales",
+  [STANDARD_CMA_HEADS.openingStock]: "openingStock",
+  [STANDARD_CMA_HEADS.purchases]: "purchases",
+  [STANDARD_CMA_HEADS.closingStock]: "closingStock",
+  [STANDARD_CMA_HEADS.directExpenses]: "directExpenses",
+  [STANDARD_CMA_HEADS.otherIncome]: "otherIncome",
+  [STANDARD_CMA_HEADS.interest]: "interest",
+  [STANDARD_CMA_HEADS.debtors]: "tradeReceivables",
+  [STANDARD_CMA_HEADS.inventory]: "inventory",
+  [STANDARD_CMA_HEADS.cashBank]: "cashBank",
+  [STANDARD_CMA_HEADS.otherCurrentAssets]: "otherCurrentAssets",
+  [STANDARD_CMA_HEADS.creditors]: "tradeCreditors",
+  [STANDARD_CMA_HEADS.otherCurrentLiabilities]: "otherCurrentLiabilities",
+  [STANDARD_CMA_HEADS.shortTermBorrowings]: "ccBorrowing",
+  [STANDARD_CMA_HEADS.capital]: "capital",
+  [STANDARD_CMA_HEADS.fixedAssets]: "fixedAssets",
+  [STANDARD_CMA_HEADS.nonCurrentOtherAssets]: "otherNonCurrentAssets",
+};
+
 const DEFAULT_FALLBACKS = {
   otherIncome: { value: 0, note: "Default 0" },
   openingStock: { value: 0, note: "Default 0" },
@@ -111,15 +152,91 @@ function isBankOdConcept(text) {
   return /bankod|cashcredit|workingcapital|cc\b|overdraft/.test(text);
 }
 
+
 function classifyAdvanceByIntent(text) {
   if (/advancetosupplier|supplieradvance|advanceforsupplier|advancevendor/.test(text)) return "otherCurrentAssets";
   if (/loanrelatedparty|relatedpartyloan|loanpartner|advancetopartner|loanassociate|loanrelated/.test(text)) return "loansAdvances";
   if (/securitydeposit|rentdeposit|electricitydeposit|tenderdeposit|deposit/.test(text)) return "otherNonCurrentAssets";
   return null;
 }
+
+function detectMandatoryCmaHead(head) {
+  const text = normalize(head.head);
+  if (head.section === "pl") {
+    if (/salesaccounts?|sales?|sale\b/.test(text)) return STANDARD_CMA_HEADS.netSales;
+    if (/openingstock/.test(text)) return STANDARD_CMA_HEADS.openingStock;
+    if (/purchaseaccounts?|purchases?/.test(text)) return STANDARD_CMA_HEADS.purchases;
+    if (/closingstock/.test(text)) return STANDARD_CMA_HEADS.closingStock;
+    if (/indirectincome/.test(text)) return STANDARD_CMA_HEADS.otherIncome;
+    if (/interestoncc|ccinterest|bankinterest|financecost|interest/.test(text)) return STANDARD_CMA_HEADS.interest;
+    if (/directexpense|manufacturingexpense|carriageinward|jobwork|power|fuel|packing/.test(text)) return STANDARD_CMA_HEADS.directExpenses;
+    if (/salary|wage|employee|admin|office|selling|marketing|repair|maintenance|travelling|miscexpense|indirectexpense/.test(text)) return STANDARD_CMA_HEADS.operatingExpenses;
+    return null;
+  }
+
+  if (/sundrydebtors?|debtors?|tradereceivables?/.test(text)) return STANDARD_CMA_HEADS.debtors;
+  if (/closingstock|inventory|stockinhand/.test(text)) return STANDARD_CMA_HEADS.inventory;
+  if (/cashinhand|cashatbank|bankbalance|cashbank/.test(text)) return STANDARD_CMA_HEADS.cashBank;
+  if (/gstitc|tdsreceivable|othercurrentassets?/.test(text)) return STANDARD_CMA_HEADS.otherCurrentAssets;
+  if (/sundrycreditors?|tradecreditors?|creditors?/.test(text)) return STANDARD_CMA_HEADS.creditors;
+  if (/advancefromcustomer|kmr|salarypayable|reimbursementdue|tdspayable/.test(text)) return STANDARD_CMA_HEADS.otherCurrentLiabilities;
+  if (/bankod|overdraft|cashcredit|cc\b/.test(text)) return STANDARD_CMA_HEADS.shortTermBorrowings;
+  if (/partnerscapital|capitalaccount|capital\b/.test(text)) return STANDARD_CMA_HEADS.capital;
+  if (/fixedassets?/.test(text)) return STANDARD_CMA_HEADS.fixedAssets;
+  if (/advances?anddeposits?|securitydeposit|deposit/.test(text)) return STANDARD_CMA_HEADS.nonCurrentOtherAssets;
+  return null;
+}
+
+function cmaHeadForFieldKey(key) {
+  return Object.keys(CMA_HEAD_TO_FIELD_KEY).find((head) => CMA_HEAD_TO_FIELD_KEY[head] === key) || "";
+}
+
+function buildLayerData(parsed, historicalSources, mapped) {
+  const sourceExtract = parsed.allHeads.map((head) => ({
+    sourceHead: head.head,
+    groupType: head.section === "pl" ? "P&L" : "Balance Sheet",
+    amount: head.amount,
+    rowNumber: head.rowNumber || null,
+    sheet: head.section === "pl" ? parsed.plSheetName : parsed.bsSheetName,
+  }));
+
+  const mappedRows = [];
+  Object.entries(historicalSources || {}).forEach(([key, rows]) => {
+    if (!rows.length) {
+      if ((mapped[key] || 0) !== 0) {
+        mappedRows.push({
+          sourceHead: "-",
+          groupType: MAP_FIELDS.find((f) => f.key === key)?.section === "pl" ? "P&L" : "Balance Sheet",
+          mappedCmaHead: cmaHeadForFieldKey(key) || MAP_FIELDS.find((f) => f.key === key)?.label || key,
+          fy1Amount: mapped[key] || 0,
+          includeFlag: "Include",
+        });
+      }
+      return;
+    }
+
+    rows.forEach((row) => {
+      mappedRows.push({
+        sourceHead: row.head,
+        groupType: row.section === "pl" ? "P&L" : "Balance Sheet",
+        mappedCmaHead: cmaHeadForFieldKey(key) || MAP_FIELDS.find((f) => f.key === key)?.label || key,
+        fy1Amount: row.amount,
+        includeFlag: row.suppressedReason ? "Exclude" : "Include",
+      });
+    });
+  });
+
+  return { sourceExtract, cmaInputMap: mappedRows };
+}
 function fmtCurrency(v) { return v === null || v === undefined ? "" : new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v); }
 function fmtPct(v) { return `${(v || 0).toFixed(2)}%`; }
 function fmtNumber(v) { return v === null || v === undefined ? "" : (v || 0).toFixed(2); }
+
+function mappedValueByHead(rows, cmaHead) {
+  return (rows || [])
+    .filter((row) => row.mappedCmaHead === cmaHead && row.includeFlag === "Include")
+    .reduce((sum, row) => sum + getNumeric(row.fy1Amount, 0), 0);
+}
 
 function detectSheetByContent(workbook, type) {
   const hintMap = {
@@ -283,6 +400,8 @@ function getMappedAmount(selectedHead, section) {
 }
 
 function strictHistoricalBucket(head) {
+  const mandatoryHead = detectMandatoryCmaHead(head);
+  if (mandatoryHead && CMA_HEAD_TO_FIELD_KEY[mandatoryHead]) return CMA_HEAD_TO_FIELD_KEY[mandatoryHead];
   const text = normalize(head.head);
   if (head.section === "pl") {
     if (/indirectexpenses?|administrative|officeexpense|generalandadmin/.test(text)) return "adminExpenses";
@@ -355,17 +474,14 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
   });
 
   const fallbackDefaults = [];
-  Object.entries(DEFAULT_FALLBACKS).forEach(([key, fallback]) => {
-    if ((mapped[key] || 0) !== 0) return;
-    if (key === "openingStock") {
-      fallbackDefaults.push({ key, label: "Opening Stock", value: 0, note: "Historical lock: default 0 when opening stock not mapped" });
-      return;
-    }
-    if (historicalLockMode && ["otherIncome", "loansAdvances", "otherCurrentAssets", "otherCurrentLiabilities", "termLoan"].includes(key)) return;
-    mapped[key] = fallback.value;
-    const field = MAP_FIELDS.find((f) => f.key === key);
-    fallbackDefaults.push({ key, label: field?.label || key, value: fallback.value, note: fallback.note });
-  });
+  if (!historicalLockMode) {
+    Object.entries(DEFAULT_FALLBACKS).forEach(([key, fallback]) => {
+      if ((mapped[key] || 0) !== 0) return;
+      mapped[key] = fallback.value;
+      const field = MAP_FIELDS.find((f) => f.key === key);
+      fallbackDefaults.push({ key, label: field?.label || key, value: fallback.value, note: fallback.note });
+    });
+  }
 
   const fallbackWarnings = [];
   const mappedHeadsBySection = {
@@ -378,7 +494,7 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
     .forEach((head) => {
       const fallbackKey = historicalLockMode ? strictHistoricalBucket(head) : classifyFallbackBucket(head);
       if (!fallbackKey) return;
-      if (historicalLockMode && ["otherIncome", "openingStock", "termLoan"].includes(fallbackKey)) return;
+      if (historicalLockMode && ["termLoan"].includes(fallbackKey)) return;
       queueCandidate(fallbackKey, head, historicalLockMode ? "historical-lock-rule" : "auto-fallback");
       fallbackWarnings.push({
         head: head.head,
@@ -512,6 +628,8 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
 }
 
 function classifyFallbackBucket(head) {
+  const mandatoryHead = detectMandatoryCmaHead(head);
+  if (mandatoryHead && CMA_HEAD_TO_FIELD_KEY[mandatoryHead]) return CMA_HEAD_TO_FIELD_KEY[mandatoryHead];
   const text = normalize(head.head);
   if (head.section === "pl") {
     if (/income|commission|discountreceived|incentive|rentreceived|interestreceived/.test(text)) return "otherIncome";
@@ -646,7 +764,8 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
     const sellingExpenses = isHistoricalYear ? mapped.sellingExpenses : sales * sellingPct;
     const otherOperatingExpenses = isHistoricalYear ? mapped.otherOperatingExpenses : sales * 0.01;
     const totalOperatingExpenses = employeeCost + administrativeExpenses + sellingExpenses + otherOperatingExpenses;
-    const ebitda = grossProfit + otherIncome - totalOperatingExpenses;
+    const ebit = grossProfit + otherIncome - totalOperatingExpenses;
+    const ebitda = ebit;
 
     const tlInterest = termLoan.applicable ? termLoan.rows[idx].interest : 0;
     const wcInterest = existingCCLimit * 0.11;
@@ -657,10 +776,9 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
       ? mapped.depreciation
       : Math.max(prev.bs["Fixed Assets"] * deprPct, sales * 0.01);
 
-    const ebit = ebitda - depreciation;
     const pbt = ebit - interest;
-    const tax = isHistoricalYear ? mapped.tax : Math.max(pbt, 0) * taxPct;
-    const pat = pbt - tax;
+    const tax = isHistoricalYear ? 0 : Math.max(pbt, 0) * taxPct;
+    const pat = isHistoricalYear ? pbt : (pbt - tax);
 
     const capital = isHistoricalYear ? mapped.capital : prev.bs.Capital;
     const reserves = isHistoricalYear ? mapped.reserves : prev.bs.Reserves + prev.pl["Profit After Tax"] * 0.7;
@@ -686,7 +804,7 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
     const cashBank = isHistoricalYear ? mapped.cashBank : Math.max(prev.bs["Cash & Bank"] + pat * 0.12, 0);
     const loansAdvances = isHistoricalYear ? mapped.loansAdvances : prev.bs["Loans & Advances"];
     const otherCurrentAssets = isHistoricalYear ? mapped.otherCurrentAssets : sales * 0.01;
-    const totalCurrentAssets = inventory + tradeReceivables + cashBank + loansAdvances + otherCurrentAssets;
+    const totalCurrentAssets = inventory + tradeReceivables + cashBank + otherCurrentAssets;
 
     const totalLiabilities = netWorth + totalNonCurrentLiabilities + totalCurrentLiabilities;
     const totalAssets = totalNonCurrentAssets + totalCurrentAssets;
@@ -939,6 +1057,8 @@ function generateReport({ useCurrentMapping = false } = {}) {
     } = mappedFinancialsFromParse({ historicalLockMode });
     if (missingMandatory.length) throw new Error(`Please map core heads: ${missingMandatory.join(", ")}`);
 
+    const layerData = buildLayerData(workbookState.parsed, historicalSources, mapped);
+
     workbookState.generated = {
       meta: {
         sourcePL: workbookState.parsed.plSheetName,
@@ -946,6 +1066,7 @@ function generateReport({ useCurrentMapping = false } = {}) {
         generatedAt: new Date().toISOString(),
         generationMode: useCurrentMapping ? "current-mapping" : "standard",
         historicalLockMode,
+        layers: layerData,
         warnings: {
           missingMandatory,
           fallbackAssignments: fallbackWarnings,
@@ -1063,6 +1184,44 @@ function downloadExcel() {
     ["Creditor Days", getConfigNumber("payable-days", 30)],
     ["Existing CC Limit", getConfigNumber("cc-limit", 0)],
   ]);
+
+
+  const sourceExtractRows = workbookState.generated.meta?.layers?.sourceExtract || [];
+  const sourceExtractWs = XLSX.utils.aoa_to_sheet([
+    ["Source_Extract"],
+    ["Source Head", "Group Type", "FY1 Amount", "Source Sheet", "Row No"],
+    ...sourceExtractRows.map((row) => [row.sourceHead, row.groupType, row.amount, row.sheet, row.rowNumber || ""]),
+  ]);
+
+  const cmaInputMapRows = workbookState.generated.meta?.layers?.cmaInputMap || [];
+  const cmaInputMapWs = XLSX.utils.aoa_to_sheet([
+    ["CMA_Input_Map"],
+    ["Source Head", "Group Type", "Mapped CMA Head", "FY1 Amount", "Include/Exclude Flag"],
+    ...cmaInputMapRows.map((row) => [row.sourceHead, row.groupType, row.mappedCmaHead, row.fy1Amount, row.includeFlag]),
+  ]);
+
+  const fy1 = workbookState.generated.years?.[0] || { pl: {}, bs: {}, workingCapital: {} };
+  const validationRows = [
+    ["Validation"],
+    ["CMA Head", "FY1 CMA Value", "FY1 Source Included Value", "Status"],
+    ["Net Sales", fy1.pl.Sales || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.netSales), ""],
+    ["Opening Stock", fy1.pl["Opening Stock"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.openingStock), ""],
+    ["Purchases", fy1.pl.Purchases || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.purchases), ""],
+    ["Closing Stock", fy1.pl["Less Closing Stock"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.closingStock), ""],
+    ["Other Income", fy1.pl["Other Income"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.otherIncome), ""],
+    ["Interest", fy1.pl.Interest || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.interest), ""],
+    ["Debtors", fy1.bs["Trade Receivables"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.debtors), ""],
+    ["Inventory", fy1.bs.Inventory || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.inventory), ""],
+    ["Cash & Bank", fy1.bs["Cash & Bank"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.cashBank), ""],
+    ["Other Current Assets", fy1.bs["Other Current Assets"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.otherCurrentAssets), ""],
+    ["Creditors", fy1.bs["Trade Creditors"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.creditors), ""],
+    ["Other Current Liabilities", fy1.bs["Other Current Liabilities"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.otherCurrentLiabilities), ""],
+    ["Short Term Borrowings", fy1.bs["CC / Bank OD"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.shortTermBorrowings), ""],
+    ["Capital", fy1.bs.Capital || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.capital), ""],
+    ["Fixed Assets", fy1.bs["Fixed Assets"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.fixedAssets), ""],
+    ["Non-current / Other Assets", fy1.bs["Other Non Current Assets"] || 0, mappedValueByHead(cmaInputMapRows, STANDARD_CMA_HEADS.nonCurrentOtherAssets), ""],
+  ];
+  const validationWs = XLSX.utils.aoa_to_sheet(validationRows);
 
   const plLabels = [
     "Sales",
@@ -1236,6 +1395,13 @@ function downloadExcel() {
     ])
     : XLSX.utils.aoa_to_sheet([["Term Loan"], ["Not Applicable"]]);
 
+
+
+  const validationRange = XLSX.utils.decode_range(validationWs["!ref"]);
+  for (let r = 2; r <= validationRange.e.r; r += 1) {
+    const rowNo = r + 1;
+    validationWs[`D${rowNo}`] = { t: "s", f: `IF(ABS(B${rowNo}-C${rowNo})<1,"OK","Mismatch")` };
+  }
   const dscrWs = XLSX.utils.aoa_to_sheet([
     ["DSCR"],
     ["Year", "PAT", "Depreciation", "Interest", "Installment", "DSCR", "Status"],
@@ -1262,6 +1428,9 @@ function downloadExcel() {
   applyCurrencyFormat(dscrWs);
 
   XLSX.utils.book_append_sheet(wb, assumptions, "Assumptions");
+  XLSX.utils.book_append_sheet(wb, sourceExtractWs, "Source_Extract");
+  XLSX.utils.book_append_sheet(wb, cmaInputMapWs, "CMA_Input_Map");
+  XLSX.utils.book_append_sheet(wb, validationWs, "Validation");
   XLSX.utils.book_append_sheet(wb, plWs, "Profit & Loss");
   XLSX.utils.book_append_sheet(wb, bsWs, "Balance Sheet");
   XLSX.utils.book_append_sheet(wb, caWs, "Current Assets");
