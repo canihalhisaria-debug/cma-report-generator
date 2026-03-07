@@ -39,9 +39,11 @@
 
         <div id="mapping-review" class="mapping-box hidden">
           <h3>Financial Head Mapping Review</h3>
-          <p class="hint">Low confidence mapping found. Validate mappings before generating the CMA report.</p>
+          <p class="hint">Low confidence mapping found. You can still generate the report with current mapping and fallbacks.</p>
           <div id="mapping-grid" class="grid"></div>
         </div>
+
+        <div id="mapping-warning-panel" class="mapping-warning hidden"></div>
       </section>
 
       <section class="card">
@@ -85,7 +87,10 @@
           <label>Repayment years <input id="tl-years" type="number" min="1" max="15" value="6" /></label>
           <label>Moratorium (years) <input id="moratorium-years" type="number" min="0" max="5" value="1" /></label>
         </div>
-        <button id="generate-btn" class="primary" disabled>Generate Banker-Grade CMA</button>
+        <div class="actions">
+          <button id="generate-btn" class="primary" disabled>Generate Banker-Grade CMA</button>
+          <button id="generate-current-btn" disabled>Generate with current mapping</button>
+        </div>
       </section>
 
       <section class="card">
