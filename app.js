@@ -1021,6 +1021,9 @@ function downloadReport() {
 
 function toCell(row, col) { return XLSX.utils.encode_cell({ r: row - 1, c: col - 1 }); }
 function setFormula(ws, row, col, formula, format) { ws[toCell(row, col)] = { t: "n", f: formula, z: format || undefined }; }
+function buildRowLookup(rowLabels, startRow = 3) {
+  return rowLabels.reduce((acc, label, idx) => ({ ...acc, [label]: startRow + idx }), {});
+}
 
 function makeSheet(title, periods, rowsByYear, rowLabels) {
   const ws = XLSX.utils.aoa_to_sheet([
@@ -1067,123 +1070,116 @@ function downloadExcel() {
   ]);
 
   const plLabels = [
-    "Sales", "Other Income", "Total Income",
-    "Opening Stock", "Purchases", "Direct Expenses", "Goods Available for Sale", "Less Closing Stock", "Cost of Goods Sold",
+    "Net Sales",
+    "Purchases",
+    "Direct Expenses",
+    "COGS",
     "Gross Profit",
-    "Employee Cost", "Administrative Expenses", "Selling Expenses", "Other Operating Expenses", "Total Operating Expenses",
-    "EBITDA", "Interest", "Depreciation", "Profit Before Tax", "Tax", "Profit After Tax",
+    "Operating Expenses",
+    "EBIT",
+    "Interest",
+    "Net Profit",
   ];
 
   const bsLabels = [
-    "Capital", "Reserves", "Net Worth",
-    "Term Loan", "Unsecured Loans", "Other Long Term Liabilities", "Total Non Current Liabilities",
-    "CC / Bank OD", "Trade Creditors", "Other Current Liabilities", "Total Current Liabilities",
-    "Total Liabilities",
-    "Fixed Assets", "Investments", "Other Non Current Assets", "Total Non Current Assets",
-    "Inventory", "Trade Receivables", "Cash & Bank", "Loans & Advances", "Other Current Assets", "Total Current Assets",
+    "Fixed Assets",
+    "Inventory",
+    "Debtors",
+    "Cash & Bank",
+    "Other Current Assets",
     "Total Assets",
+    "Capital",
+    "Term Loan",
+    "Creditors",
+    "Short Term Borrowings",
+    "Other Current Liabilities",
+    "Total Liabilities",
   ];
 
-  const plWs = makeSheet("Profit & Loss", periods, years.map((y) => y.pl), plLabels);
-  const bsWs = makeSheet("Balance Sheet", periods, years.map((y) => y.bs), bsLabels);
+  const plRows = years.map((y) => ({
+    "Net Sales": y.pl.Sales,
+    Purchases: y.pl.Purchases,
+    "Direct Expenses": y.pl["Direct Expenses"],
+    COGS: "",
+    "Gross Profit": "",
+    "Operating Expenses": y.pl["Total Operating Expenses"],
+    EBIT: "",
+    Interest: y.pl.Interest,
+    "Net Profit": "",
+  }));
+
+  const bsRows = years.map((y) => ({
+    "Fixed Assets": y.bs["Fixed Assets"],
+    Inventory: y.bs.Inventory,
+    Debtors: y.bs["Trade Receivables"],
+    "Cash & Bank": y.bs["Cash & Bank"],
+    "Other Current Assets": y.bs["Other Current Assets"],
+    "Total Assets": "",
+    Capital: y.bs.Capital,
+    "Term Loan": y.bs["Term Loan"],
+    Creditors: y.bs["Trade Creditors"],
+    "Short Term Borrowings": y.bs["CC / Bank OD"],
+    "Other Current Liabilities": y.bs["Other Current Liabilities"],
+    "Total Liabilities": "",
+  }));
+
+  const plWs = makeSheet("Profit & Loss", periods, plRows, plLabels);
+  const bsWs = makeSheet("Balance Sheet", periods, bsRows, bsLabels);
+  const plRow = buildRowLookup(plLabels);
+  const bsRow = buildRowLookup(bsLabels);
 
   periods.forEach((_, idx) => {
     const col = idx + 2;
-    setFormula(plWs, 5, col, `${toCell(3, col)}+${toCell(4, col)}`, "₹#,##0");
-    setFormula(plWs, 9, col, `${toCell(6, col)}+${toCell(7, col)}+${toCell(8, col)}`, "₹#,##0");
-    setFormula(plWs, 10, col, `${toCell(9, col)}-${toCell(10, col)}`, "₹#,##0");
-    setFormula(plWs, 11, col, `${toCell(5, col)}-${toCell(11, col)}`, "₹#,##0");
-    setFormula(plWs, 16, col, `${toCell(12, col)}+${toCell(13, col)}+${toCell(14, col)}+${toCell(15, col)}`, "₹#,##0");
-    setFormula(plWs, 17, col, `${toCell(11, col)}-${toCell(16, col)}`, "₹#,##0");
-    setFormula(plWs, 20, col, `${toCell(17, col)}-${toCell(18, col)}-${toCell(19, col)}`, "₹#,##0");
-    setFormula(plWs, 22, col, `${toCell(20, col)}-${toCell(21, col)}`, "₹#,##0");
+    setFormula(plWs, plRow.COGS, col, `${toCell(plRow.Purchases, col)}+${toCell(plRow["Direct Expenses"], col)}`, "₹#,##0");
+    setFormula(plWs, plRow["Gross Profit"], col, `${toCell(plRow["Net Sales"], col)}-${toCell(plRow.COGS, col)}`, "₹#,##0");
+    setFormula(plWs, plRow.EBIT, col, `${toCell(plRow["Gross Profit"], col)}-${toCell(plRow["Operating Expenses"], col)}`, "₹#,##0");
+    setFormula(plWs, plRow["Net Profit"], col, `${toCell(plRow.EBIT, col)}-${toCell(plRow.Interest, col)}`, "₹#,##0");
 
-    setFormula(bsWs, 5, col, `${toCell(3, col)}+${toCell(4, col)}`, "₹#,##0");
-    setFormula(bsWs, 9, col, `${toCell(6, col)}+${toCell(7, col)}+${toCell(8, col)}`, "₹#,##0");
-    setFormula(bsWs, 13, col, `${toCell(10, col)}+${toCell(11, col)}+${toCell(12, col)}`, "₹#,##0");
-    setFormula(bsWs, 14, col, `${toCell(5, col)}+${toCell(9, col)}+${toCell(13, col)}`, "₹#,##0");
-    setFormula(bsWs, 18, col, `${toCell(15, col)}+${toCell(16, col)}+${toCell(17, col)}`, "₹#,##0");
-    setFormula(bsWs, 24, col, `${toCell(19, col)}+${toCell(20, col)}+${toCell(21, col)}+${toCell(22, col)}+${toCell(23, col)}`, "₹#,##0");
-    setFormula(bsWs, 25, col, `${toCell(18, col)}+${toCell(24, col)}`, "₹#,##0");
+    setFormula(bsWs, bsRow["Total Assets"], col, `${toCell(bsRow["Fixed Assets"], col)}+${toCell(bsRow.Inventory, col)}+${toCell(bsRow.Debtors, col)}+${toCell(bsRow["Cash & Bank"], col)}+${toCell(bsRow["Other Current Assets"], col)}`, "₹#,##0");
+    setFormula(bsWs, bsRow["Total Liabilities"], col, `${toCell(bsRow.Capital, col)}+${toCell(bsRow["Term Loan"], col)}+${toCell(bsRow.Creditors, col)}+${toCell(bsRow["Short Term Borrowings"], col)}+${toCell(bsRow["Other Current Liabilities"], col)}`, "₹#,##0");
   });
 
   applyCurrencyFormat(plWs);
   applyCurrencyFormat(bsWs);
 
-  const caWs = XLSX.utils.aoa_to_sheet([
-    ["Current Assets"],
-    ["Particulars", ...periods],
-    ["Inventory", ...years.map((y) => y.bs.Inventory)],
-    ["Trade Receivables", ...years.map((y) => y.bs["Trade Receivables"])],
-    ["Cash & Bank", ...years.map((y) => y.bs["Cash & Bank"])],
-    ["Loans & Advances", ...years.map((y) => y.bs["Loans & Advances"])],
-    ["Other Current Assets", ...years.map((y) => y.bs["Other Current Assets"])],
-    ["Total Current Assets", ...periods.map(() => "")],
-  ]);
-
-  const clWs = XLSX.utils.aoa_to_sheet([
-    ["Current Liabilities"],
-    ["Particulars", ...periods],
-    ["CC / Bank OD", ...years.map((y) => y.bs["CC / Bank OD"])],
-    ["Trade Creditors", ...years.map((y) => y.bs["Trade Creditors"])],
-    ["Other Current Liabilities", ...years.map((y) => y.bs["Other Current Liabilities"])],
-    ["Total Current Liabilities", ...periods.map(() => "")],
-  ]);
-
-  periods.forEach((_, idx) => {
-    const c = idx + 2;
-    setFormula(caWs, 8, c, `${toCell(3, c)}+${toCell(4, c)}+${toCell(5, c)}+${toCell(6, c)}+${toCell(7, c)}`, "₹#,##0");
-    setFormula(clWs, 6, c, `${toCell(3, c)}+${toCell(4, c)}+${toCell(5, c)}`, "₹#,##0");
-  });
-
   const wcWs = XLSX.utils.aoa_to_sheet([
     ["Working Capital"],
     ["Particulars", ...periods],
-    ["Total Current Assets", ...periods.map(() => "")],
-    ["Total Current Liabilities", ...periods.map(() => "")],
-    ["Net Working Capital", ...periods.map(() => "")],
-    ["Working Capital Gap", ...periods.map(() => "")],
-    ["Borrower Contribution", ...periods.map(() => "")],
-    ["MPBF (Tandon Method II)", ...periods.map(() => "")],
-    ["Bank Finance Required", ...periods.map(() => "")],
-    ["Current Ratio", ...periods.map(() => "")],
-    [],
-    ["CC Limit Assessment"],
-    ["Particulars", ...periods],
-    ["Projected Sales", ...years.map((y) => y.workingCapital.projectedSales)],
-    ["MPBF", ...years.map((y) => y.workingCapital.requiredWorkingCapital)],
-    ["Existing Limit", ...years.map((y) => y.workingCapital.existingLimit)],
-    ["Shortfall", ...years.map((y) => y.workingCapital.shortfall)],
-    ["Proposed CC Limit", ...years.map((y) => y.workingCapital.proposedLimit)],
+    ["Inventory", ...years.map((y) => y.bs.Inventory)],
+    ["Debtors", ...years.map((y) => y.bs["Trade Receivables"])],
+    ["Cash & Bank", ...years.map((y) => y.bs["Cash & Bank"])],
+    ["Other Current Assets", ...years.map((y) => y.bs["Other Current Assets"])],
+    ["Current Assets", ...periods.map(() => "")],
+    ["Creditors", ...years.map((y) => y.bs["Trade Creditors"])],
+    ["Short Term Borrowings", ...years.map((y) => y.bs["CC / Bank OD"])],
+    ["Other Current Liabilities", ...years.map((y) => y.bs["Other Current Liabilities"])],
+    ["Current Liabilities", ...periods.map(() => "")],
+    ["Working Capital", ...periods.map(() => "")],
   ]);
+  const wcLabels = ["Inventory", "Debtors", "Cash & Bank", "Other Current Assets", "Current Assets", "Creditors", "Short Term Borrowings", "Other Current Liabilities", "Current Liabilities", "Working Capital"];
+  const wcRow = buildRowLookup(wcLabels);
 
   periods.forEach((_, idx) => {
     const c = idx + 2;
-    setFormula(wcWs, 3, c, `'Current Assets'!${toCell(8, c)}`, "₹#,##0");
-    setFormula(wcWs, 4, c, `'Current Liabilities'!${toCell(6, c)}`, "₹#,##0");
-    setFormula(wcWs, 5, c, `${toCell(3, c)}-${toCell(4, c)}`, "₹#,##0");
-    setFormula(wcWs, 6, c, `${toCell(3, c)}-('Current Liabilities'!${toCell(4, c)}+'Current Liabilities'!${toCell(5, c)})`, "₹#,##0");
-    setFormula(wcWs, 7, c, `MAX(${toCell(6, c)}-MAX((0.75*${toCell(3, c)})-('Current Liabilities'!${toCell(4, c)}+'Current Liabilities'!${toCell(5, c)}),0),0)`, "₹#,##0");
-    setFormula(wcWs, 8, c, `MAX((0.75*${toCell(3, c)})-('Current Liabilities'!${toCell(4, c)}+'Current Liabilities'!${toCell(5, c)}),0)`, "₹#,##0");
-    setFormula(wcWs, 9, c, `${toCell(8, c)}`, "₹#,##0");
-    setFormula(wcWs, 10, c, `${toCell(3, c)}/${toCell(4, c)}`, "0.00");
+    setFormula(wcWs, wcRow["Current Assets"], c, `${toCell(wcRow.Inventory, c)}+${toCell(wcRow.Debtors, c)}+${toCell(wcRow["Cash & Bank"], c)}+${toCell(wcRow["Other Current Assets"], c)}`, "₹#,##0");
+    setFormula(wcWs, wcRow["Current Liabilities"], c, `${toCell(wcRow.Creditors, c)}+${toCell(wcRow["Short Term Borrowings"], c)}+${toCell(wcRow["Other Current Liabilities"], c)}`, "₹#,##0");
+    setFormula(wcWs, wcRow["Working Capital"], c, `${toCell(wcRow["Current Assets"], c)}-${toCell(wcRow["Current Liabilities"], c)}`, "₹#,##0");
   });
 
-  const ratioLabels = ["Current Ratio", "Quick Ratio", "GP Ratio", "NP Ratio", "TOL / TNW", "Debtor Days", "Creditor Days", "Inventory Days", "Interest Coverage", "DSCR"];
+  const ratioLabels = ["Current Ratio", "Quick Ratio", "GP Ratio", "NP Ratio", "Debtor Days", "Creditor Days", "Inventory Days", "Interest Coverage"];
   const ratioWs = XLSX.utils.aoa_to_sheet([["Ratios"], ["Particulars", ...periods], ...ratioLabels.map((l) => [l, ...periods.map(() => "")])]);
+  const ratioRow = buildRowLookup(ratioLabels);
 
   periods.forEach((_, idx) => {
     const c = idx + 2;
-    setFormula(ratioWs, 3, c, `'Working Capital'!${toCell(10, c)}`, "0.00");
-    setFormula(ratioWs, 4, c, `('Balance Sheet'!${toCell(24, c)}-'Balance Sheet'!${toCell(19, c)})/'Balance Sheet'!${toCell(13, c)}`, "0.00");
-    setFormula(ratioWs, 5, c, `'Profit & Loss'!${toCell(11, c)}/'Profit & Loss'!${toCell(3, c)}*100`, "0.00");
-    setFormula(ratioWs, 6, c, `'Profit & Loss'!${toCell(22, c)}/'Profit & Loss'!${toCell(3, c)}*100`, "0.00");
-    setFormula(ratioWs, 7, c, `('Balance Sheet'!${toCell(14, c)}-'Balance Sheet'!${toCell(5, c)})/'Balance Sheet'!${toCell(5, c)}`, "0.00");
-    setFormula(ratioWs, 8, c, `'Balance Sheet'!${toCell(20, c)}/'Profit & Loss'!${toCell(3, c)}*365`, "0.00");
-    setFormula(ratioWs, 9, c, `'Balance Sheet'!${toCell(11, c)}/'Profit & Loss'!${toCell(7, c)}*365`, "0.00");
-    setFormula(ratioWs, 10, c, `'Balance Sheet'!${toCell(19, c)}/'Profit & Loss'!${toCell(10, c)}*365`, "0.00");
-    setFormula(ratioWs, 11, c, `'Profit & Loss'!${toCell(17, c)}/'Profit & Loss'!${toCell(18, c)}`, "0.00");
-    setFormula(ratioWs, 12, c, `'DSCR'!${toCell(3 + idx, 6)}`, "0.00");
+    setFormula(ratioWs, ratioRow["Current Ratio"], c, `'Working Capital'!${toCell(wcRow["Current Assets"], c)}/'Working Capital'!${toCell(wcRow["Current Liabilities"], c)}`, "0.00");
+    setFormula(ratioWs, ratioRow["Quick Ratio"], c, `('Working Capital'!${toCell(wcRow["Current Assets"], c)}-'Working Capital'!${toCell(wcRow.Inventory, c)})/'Working Capital'!${toCell(wcRow["Current Liabilities"], c)}`, "0.00");
+    setFormula(ratioWs, ratioRow["GP Ratio"], c, `'Profit & Loss'!${toCell(plRow["Gross Profit"], c)}/'Profit & Loss'!${toCell(plRow["Net Sales"], c)}*100`, "0.00");
+    setFormula(ratioWs, ratioRow["NP Ratio"], c, `'Profit & Loss'!${toCell(plRow["Net Profit"], c)}/'Profit & Loss'!${toCell(plRow["Net Sales"], c)}*100`, "0.00");
+    setFormula(ratioWs, ratioRow["Debtor Days"], c, `'Working Capital'!${toCell(wcRow.Debtors, c)}/'Profit & Loss'!${toCell(plRow["Net Sales"], c)}*365`, "0.00");
+    setFormula(ratioWs, ratioRow["Creditor Days"], c, `'Working Capital'!${toCell(wcRow.Creditors, c)}/'Profit & Loss'!${toCell(plRow.Purchases, c)}*365`, "0.00");
+    setFormula(ratioWs, ratioRow["Inventory Days"], c, `'Working Capital'!${toCell(wcRow.Inventory, c)}/'Profit & Loss'!${toCell(plRow.COGS, c)}*365`, "0.00");
+    setFormula(ratioWs, ratioRow["Interest Coverage"], c, `'Profit & Loss'!${toCell(plRow.EBIT, c)}/'Profit & Loss'!${toCell(plRow.Interest, c)}`, "0.00");
   });
 
   const tlWs = workbookState.generated.termLoan.applicable
@@ -1213,8 +1209,6 @@ function downloadExcel() {
     ["Average DSCR", "", "", "", "", workbookState.generated.avgDscr || "", workbookState.generated.avgDscr === null ? "N/A" : (workbookState.generated.avgDscr >= 1.25 ? "Acceptable" : "Warning")],
   ]);
 
-  applyCurrencyFormat(caWs);
-  applyCurrencyFormat(clWs);
   applyCurrencyFormat(wcWs);
   applyCurrencyFormat(tlWs);
   applyCurrencyFormat(dscrWs);
@@ -1222,8 +1216,6 @@ function downloadExcel() {
   XLSX.utils.book_append_sheet(wb, assumptions, "Assumptions");
   XLSX.utils.book_append_sheet(wb, plWs, "Profit & Loss");
   XLSX.utils.book_append_sheet(wb, bsWs, "Balance Sheet");
-  XLSX.utils.book_append_sheet(wb, caWs, "Current Assets");
-  XLSX.utils.book_append_sheet(wb, clWs, "Current Liabilities");
   XLSX.utils.book_append_sheet(wb, wcWs, "Working Capital");
   XLSX.utils.book_append_sheet(wb, ratioWs, "Ratios");
   XLSX.utils.book_append_sheet(wb, tlWs, "Term Loan");
