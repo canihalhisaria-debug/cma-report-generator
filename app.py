@@ -176,6 +176,7 @@ def num(label: str, key: str) -> float:
 
 
 INDIAN_NUMBER_FMT = "#,##,##0.00"
+INDIAN_PERCENT_FMT = "0.00"
 
 
 def build_styled_cma_workbook(data: dict) -> bytes:
@@ -183,115 +184,139 @@ def build_styled_cma_workbook(data: dict) -> bytes:
     wb.remove(wb.active)
 
     thin_side = Side(style="thin", color="D1D5DB")
-    border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    medium_side = Side(style="medium", color="4B5563")
+    thin_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
-    title_font = Font(name="Calibri", size=16, bold=True, color="1F2937")
-    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-    section_font = Font(name="Calibri", size=11, bold=True, color="1E3A8A")
-    normal_font = Font(name="Calibri", size=10, color="111827")
-    formula_font = Font(name="Calibri", size=10, italic=True, color="374151")
+    styles = {
+        "title": {
+            "font": Font(name="Calibri", size=16, bold=True, color="0B2545"),
+            "fill": PatternFill(fill_type="solid", fgColor="E6EFFA"),
+            "align": Alignment(horizontal="center", vertical="center", wrap_text=True),
+        },
+        "header": {
+            "font": Font(name="Calibri", size=11, bold=True, color="FFFFFF"),
+            "fill": PatternFill(fill_type="solid", fgColor="1F4E78"),
+            "align": Alignment(horizontal="center", vertical="center", wrap_text=True),
+        },
+        "section": {
+            "font": Font(name="Calibri", size=11, bold=True, color="1E3A8A"),
+            "fill": PatternFill(fill_type="solid", fgColor="DEEAF6"),
+            "align": Alignment(horizontal="left", vertical="center", wrap_text=True),
+        },
+        "data": {
+            "font": Font(name="Calibri", size=10, color="111827"),
+            "fill": PatternFill(fill_type="solid", fgColor="FFFFFF"),
+            "align": Alignment(horizontal="left", vertical="center", wrap_text=True),
+        },
+        "formula": {
+            "font": Font(name="Calibri", size=10, italic=True, color="374151"),
+            "fill": PatternFill(fill_type="solid", fgColor="F3F4F6"),
+            "align": Alignment(horizontal="left", vertical="center", wrap_text=True),
+        },
+        "subtotal": {
+            "font": Font(name="Calibri", size=10, bold=True, color="1F2937"),
+            "fill": PatternFill(fill_type="solid", fgColor="EAF2FB"),
+            "align": Alignment(horizontal="left", vertical="center", wrap_text=True),
+        },
+        "total": {
+            "font": Font(name="Calibri", size=11, bold=True, color="0F172A"),
+            "fill": PatternFill(fill_type="solid", fgColor="D9E5F7"),
+            "align": Alignment(horizontal="left", vertical="center", wrap_text=True),
+        },
+    }
 
-    title_fill = PatternFill(fill_type="solid", fgColor="E8EEF9")
-    header_fill = PatternFill(fill_type="solid", fgColor="1F4E78")
-    section_fill = PatternFill(fill_type="solid", fgColor="DCE6F1")
-    formula_fill = PatternFill(fill_type="solid", fgColor="F3F4F6")
-
-    def make_sheet(sheet_name: str, report_title: str, rows: list[dict]):
+    def render_sheet(sheet_name: str, report_title: str, rows: list[dict], amount_header: str = "Amount"):
         ws = wb.create_sheet(title=sheet_name)
         ws.merge_cells("A1:B1")
         ws["A1"] = report_title
-        ws["A1"].font = title_font
-        ws["A1"].fill = title_fill
-        ws["A1"].alignment = Alignment(horizontal="left", vertical="center")
 
         ws["A2"] = "Particulars"
-        ws["B2"] = "Amount"
-        for cell in (ws["A2"], ws["B2"]):
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.border = border
+        ws["B2"] = amount_header
 
-        ws.column_dimensions["A"].width = 52
-        ws.column_dimensions["B"].width = 22
-        ws.freeze_panes = "A2"
+        ws.column_dimensions["A"].width = 62
+        ws.column_dimensions["B"].width = 24
+        ws.freeze_panes = "A3"
+        ws.sheet_view.showGridLines = False
+
+        for cell in (ws["A1"], ws["B1"]):
+            cell.font = styles["title"]["font"]
+            cell.fill = styles["title"]["fill"]
+            cell.alignment = styles["title"]["align"]
+            cell.border = thin_border
+
+        for cell in (ws["A2"], ws["B2"]):
+            cell.font = styles["header"]["font"]
+            cell.fill = styles["header"]["fill"]
+            cell.alignment = styles["header"]["align"]
+            cell.border = thin_border
 
         row_idx = 3
         for row in rows:
-            ws.cell(row=row_idx, column=1, value=row["label"])
-            ws.cell(row=row_idx, column=2, value=row.get("value"))
-
-            label_cell = ws.cell(row=row_idx, column=1)
-            value_cell = ws.cell(row=row_idx, column=2)
-
-            label_cell.border = border
-            value_cell.border = border
-            label_cell.alignment = Alignment(horizontal="left", vertical="center")
-            value_cell.alignment = Alignment(horizontal="right", vertical="center")
-            value_cell.number_format = INDIAN_NUMBER_FMT
-
             row_type = row.get("type", "data")
-            if row_type == "section":
-                label_cell.font = section_font
-                value_cell.font = section_font
-                label_cell.fill = section_fill
-                value_cell.fill = section_fill
-            elif row_type == "formula":
-                label_cell.font = formula_font
-                value_cell.font = formula_font
-                label_cell.fill = formula_fill
-                value_cell.fill = formula_fill
-            else:
-                label_cell.font = normal_font
-                value_cell.font = normal_font
+            style = styles.get(row_type, styles["data"])
+
+            label_cell = ws.cell(row=row_idx, column=1, value=row.get("label", ""))
+            value_cell = ws.cell(row=row_idx, column=2, value=row.get("formula", row.get("value")))
+
+            label_cell.font = style["font"]
+            label_cell.fill = style["fill"]
+            label_cell.alignment = style["align"]
+            label_cell.border = thin_border
+
+            value_cell.font = style["font"]
+            value_cell.fill = style["fill"]
+            value_cell.border = thin_border
+            value_cell.alignment = Alignment(horizontal="right", vertical="center")
+            value_cell.number_format = row.get("number_format", INDIAN_NUMBER_FMT)
+
+            if row_type in {"subtotal", "total"}:
+                label_cell.border = Border(left=thin_side, right=thin_side, top=medium_side, bottom=thin_side)
+                value_cell.border = Border(left=thin_side, right=thin_side, top=medium_side, bottom=thin_side)
 
             ws.row_dimensions[row_idx].height = 22
             row_idx += 1
 
-        ws.row_dimensions[1].height = 28
+        ws.row_dimensions[1].height = 30
         ws.row_dimensions[2].height = 24
 
     pnl_rows = [
-        {"type": "section", "label": "A. INCOME", "value": data["total_income"]},
+        {"type": "section", "label": "A. INCOME"},
         {"type": "data", "label": "Domestic Sale", "value": data["domestic_sale"]},
         {"type": "data", "label": "Export Sale", "value": data["export_sale"]},
         {"type": "data", "label": "Other Income", "value": data["other_income"]},
-        {"type": "formula", "label": "(Domestic + Export + Other)", "value": data["total_income"]},
-        {"type": "section", "label": "B. DIRECT / MATERIAL COST", "value": data["material_cost"]},
+        {"type": "subtotal", "label": "Total Income (A)", "formula": "=SUM(B4:B6)"},
+        {"type": "section", "label": "B. DIRECT / MATERIAL COST"},
         {"type": "data", "label": "Opening Stock", "value": data["opening_stock"]},
         {"type": "data", "label": "Purchases", "value": data["purchases"]},
         {"type": "data", "label": "Carriage Outward", "value": data["carriage_outward"]},
         {"type": "data", "label": "Unloading Expenses", "value": data["unloading_expenses"]},
         {"type": "data", "label": "Direct Expenses", "value": data["direct_expenses"]},
         {"type": "data", "label": "Less: Closing Stock", "value": -data["closing_stock"]},
-        {"type": "section", "label": "C. INDIRECT / OPERATING EXPENSES", "value": data["operating_exp"]},
+        {"type": "subtotal", "label": "Material Cost (B)", "formula": "=SUM(B9:B14)"},
+        {"type": "section", "label": "C. INDIRECT / OPERATING EXPENSES"},
         {"type": "data", "label": "Salary & Wages", "value": data["salary_wages"]},
         {"type": "data", "label": "Power & Fuel", "value": data["power_fuel"]},
         {"type": "data", "label": "Rent Expenses", "value": data["rent_exp"]},
         {"type": "data", "label": "Printing & Stationery", "value": data["printing_stationery"]},
         {"type": "data", "label": "Depreciation", "value": data["depreciation"]},
         {"type": "data", "label": "Other Expenditure", "value": data["other_expenditure"]},
-        {"type": "section", "label": "D. EBIT", "value": data["ebit"]},
-        {"type": "formula", "label": "(A - B - C)", "value": data["ebit"]},
-        {"type": "section", "label": "E. INTEREST", "value": data["total_interest"]},
+        {"type": "subtotal", "label": "Operating Expenses (C)", "formula": "=SUM(B17:B22)"},
+        {"type": "total", "label": "D. EBIT", "formula": "=B7-B15-B23"},
+        {"type": "section", "label": "E. INTEREST"},
         {"type": "data", "label": "Interest on CC", "value": data["interest_cc"]},
         {"type": "data", "label": "Interest on TL", "value": data["interest_tl"]},
-        {"type": "section", "label": "F. EBT", "value": data["ebt"]},
-        {"type": "formula", "label": "(D - E)", "value": data["ebt"]},
-        {"type": "section", "label": "G. TAX", "value": data["tax_calc"]},
-        {"type": "formula", "label": "(Tax rate applied on positive EBT)", "value": data["tax_calc"]},
-        {"type": "section", "label": "H. PAT", "value": data["pat"]},
-        {"type": "formula", "label": "(F - G)", "value": data["pat"]},
-        {"type": "section", "label": "I. DEPRECIATION ADDED BACK", "value": data["depreciation"]},
-        {"type": "section", "label": "J. CASH ACCRUAL", "value": data["cash_accrual"]},
-        {"type": "formula", "label": "(H + I)", "value": data["cash_accrual"]},
-        {"type": "section", "label": "K. REPAYMENT OF TERM LOAN", "value": data["repayment_tl"]},
-        {"type": "section", "label": "L. NET CASH AVAILABLE", "value": data["net_cash_available"]},
-        {"type": "formula", "label": "(J - K)", "value": data["net_cash_available"]},
+        {"type": "subtotal", "label": "Total Interest (E)", "formula": "=SUM(B26:B27)"},
+        {"type": "total", "label": "F. EBT", "formula": "=B24-B28"},
+        {"type": "formula", "label": "G. TAX (on positive EBT)", "value": data["tax_calc"]},
+        {"type": "total", "label": "H. PAT", "formula": "=B29-B30"},
+        {"type": "formula", "label": "I. Depreciation Added Back", "value": data["depreciation"]},
+        {"type": "total", "label": "J. CASH ACCRUAL", "formula": "=B31+B32"},
+        {"type": "formula", "label": "K. Repayment of Term Loan", "value": data["repayment_tl"]},
+        {"type": "total", "label": "L. NET CASH AVAILABLE", "formula": "=B33-B34"},
     ]
 
     bs_rows = [
-        {"type": "section", "label": "Assets", "value": data["total_assets"]},
+        {"type": "section", "label": "Assets"},
         {"type": "data", "label": "Gross Fixed Assets", "value": data["gross_fa"]},
         {"type": "data", "label": "Less: Accumulated Depreciation", "value": -data["accum_dep"]},
         {"type": "data", "label": "Inventory", "value": data["inventory"]},
@@ -299,7 +324,8 @@ def build_styled_cma_workbook(data: dict) -> bytes:
         {"type": "data", "label": "Cash & Bank", "value": data["cash_bank"]},
         {"type": "data", "label": "Other Current Assets", "value": data["other_ca"]},
         {"type": "data", "label": "Loans & Advances", "value": data["loans_adv"]},
-        {"type": "section", "label": "Liabilities", "value": data["total_liabilities"]},
+        {"type": "total", "label": "Total Assets", "formula": "=SUM(B4:B10)"},
+        {"type": "section", "label": "Liabilities"},
         {"type": "data", "label": "Capital", "value": data["capital"]},
         {"type": "data", "label": "Reserves & Surplus", "value": data["reserves"]},
         {"type": "data", "label": "Term Loan", "value": data["term_loan"]},
@@ -307,37 +333,58 @@ def build_styled_cma_workbook(data: dict) -> bytes:
         {"type": "data", "label": "Sundry Creditors", "value": data["sundry_creditors"]},
         {"type": "data", "label": "Other Current Liabilities", "value": data["other_cl"]},
         {"type": "data", "label": "Statutory Liabilities", "value": data["statutory_liab"]},
-        {"type": "formula", "label": "Difference (Assets - Liabilities)", "value": data["total_assets"] - data["total_liabilities"]},
+        {"type": "total", "label": "Total Liabilities", "formula": "=SUM(B12:B18)"},
+        {"type": "formula", "label": "Difference (Assets - Liabilities)", "formula": "=B11-B19"},
     ]
 
     ratios_rows = [
-        {"type": "section", "label": "Liquidity & Leverage", "value": None},
-        {"type": "formula", "label": "Current Ratio = Current Assets / Current Liabilities", "value": data["current_ratio"]},
-        {"type": "formula", "label": "Debt Equity Ratio = Outside Liabilities / Tangible Net Worth", "value": data["debt_equity_ratio"]},
-        {"type": "formula", "label": "EBITDA Margin % = EBITDA / Total Income", "value": data["ebitda_margin"]},
-        {"type": "formula", "label": "Net Profit Margin % = PAT / Total Income", "value": data["net_profit_margin"]},
+        {"type": "section", "label": "Liquidity & Leverage"},
+        {
+            "type": "formula",
+            "label": "Current Ratio = Current Assets / Current Liabilities",
+            "value": data["current_ratio"],
+            "number_format": INDIAN_PERCENT_FMT,
+        },
+        {
+            "type": "formula",
+            "label": "Debt Equity Ratio = Outside Liabilities / Tangible Net Worth",
+            "value": data["debt_equity_ratio"],
+            "number_format": INDIAN_PERCENT_FMT,
+        },
+        {
+            "type": "formula",
+            "label": "EBITDA Margin % = EBITDA / Total Income",
+            "value": data["ebitda_margin"],
+            "number_format": INDIAN_PERCENT_FMT,
+        },
+        {
+            "type": "formula",
+            "label": "Net Profit Margin % = PAT / Total Income",
+            "value": data["net_profit_margin"],
+            "number_format": INDIAN_PERCENT_FMT,
+        },
     ]
 
     dscr_rows = [
-        {"type": "section", "label": "Debt Service Coverage Ratio", "value": data["dscr"]},
+        {"type": "section", "label": "Debt Service Coverage Ratio"},
         {"type": "formula", "label": "Numerator = PAT + Depreciation + Interest on Term Loan", "value": data["dscr_numerator"]},
         {"type": "formula", "label": "Denominator = Interest on Term Loan + Repayment of Term Loan", "value": data["dscr_denominator"]},
-        {"type": "formula", "label": "DSCR = Numerator / Denominator", "value": data["dscr"]},
+        {"type": "total", "label": "DSCR = Numerator / Denominator", "formula": "=IF(B5=0,0,B4/B5)", "number_format": INDIAN_PERCENT_FMT},
     ]
 
     validation_rows = [
-        {"type": "section", "label": "Validation Checks", "value": None},
-        {"type": "formula", "label": "Balance Sheet Tallies", "value": 1 if abs(data["total_assets"] - data["total_liabilities"]) < 1 else 0},
-        {"type": "formula", "label": "EBT = EBIT - Interest", "value": 1 if abs(data["ebt"] - (data["ebit"] - data["total_interest"])) < 1 else 0},
-        {"type": "formula", "label": "PAT = EBT - Tax", "value": 1 if abs(data["pat"] - (data["ebt"] - data["tax_calc"])) < 1 else 0},
-        {"type": "formula", "label": "Net Cash = Cash Accrual - TL Repayment", "value": 1 if abs(data["net_cash_available"] - (data["cash_accrual"] - data["repayment_tl"])) < 1 else 0},
+        {"type": "section", "label": "Validation Checks"},
+        {"type": "formula", "label": "Balance Sheet Tallies", "value": 1 if abs(data["total_assets"] - data["total_liabilities"]) < 1 else 0, "number_format": "0"},
+        {"type": "formula", "label": "EBT = EBIT - Interest", "value": 1 if abs(data["ebt"] - (data["ebit"] - data["total_interest"])) < 1 else 0, "number_format": "0"},
+        {"type": "formula", "label": "PAT = EBT - Tax", "value": 1 if abs(data["pat"] - (data["ebt"] - data["tax_calc"])) < 1 else 0, "number_format": "0"},
+        {"type": "formula", "label": "Net Cash = Cash Accrual - TL Repayment", "value": 1 if abs(data["net_cash_available"] - (data["cash_accrual"] - data["repayment_tl"])) < 1 else 0, "number_format": "0"},
     ]
 
-    make_sheet("Profit & Loss", "CMA Report - Profit & Loss Statement", pnl_rows)
-    make_sheet("Balance Sheet", "CMA Report - Balance Sheet", bs_rows)
-    make_sheet("Ratios", "CMA Report - Financial Ratios", ratios_rows)
-    make_sheet("DSCR", "CMA Report - DSCR Analysis", dscr_rows)
-    make_sheet("Validation", "CMA Report - Validation", validation_rows)
+    render_sheet("Profit & Loss", "CMA Report - Profit & Loss Statement", pnl_rows)
+    render_sheet("Balance Sheet", "CMA Report - Balance Sheet", bs_rows)
+    render_sheet("Ratios", "CMA Report - Financial Ratios", ratios_rows, amount_header="Value")
+    render_sheet("DSCR", "CMA Report - DSCR Analysis", dscr_rows, amount_header="Value")
+    render_sheet("Validation", "CMA Report - Validation", validation_rows, amount_header="Status")
 
     output = io.BytesIO()
     wb.save(output)
