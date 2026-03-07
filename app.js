@@ -104,8 +104,18 @@ function normalize(value) { return (value || "").toString().toLowerCase().replac
 function normalizeConcept(value) {
   return normalize(value)
     .replace(/accounts?|ledger|group|head|main|under/g, "")
-    .replace(/partners?/g, "")
     .replace(/[^a-z0-9]/g, "");
+}
+
+function isBankOdConcept(text) {
+  return /bankod|cashcredit|workingcapital|cc\b|overdraft/.test(text);
+}
+
+function classifyAdvanceByIntent(text) {
+  if (/advancetosupplier|supplieradvance|advanceforsupplier|advancevendor/.test(text)) return "otherCurrentAssets";
+  if (/loanrelatedparty|relatedpartyloan|loanpartner|advancetopartner|loanassociate|loanrelated/.test(text)) return "loansAdvances";
+  if (/securitydeposit|rentdeposit|electricitydeposit|tenderdeposit|deposit/.test(text)) return "otherNonCurrentAssets";
+  return null;
 }
 function fmtCurrency(v) { return v === null || v === undefined ? "" : new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(v); }
 function fmtPct(v) { return `${(v || 0).toFixed(2)}%`; }
@@ -284,14 +294,16 @@ function strictHistoricalBucket(head) {
 
   if (/sundrydebtors?|tradereceivables?|debtors?/.test(text)) return "tradeReceivables";
   if (/sundrycreditors?|tradecreditors?|creditors?/.test(text)) return "tradeCreditors";
-  if (/bankod|cashcredit|workingcapitalborrow|cc\b/.test(text)) return "ccBorrowing";
+  if (isBankOdConcept(text)) return "ccBorrowing";
   if (/capitalaccount|partnerscapital|capital\b/.test(text)) return "capital";
   if (/cashinhand|cashatbank|bankbalance|currentbank|currentaccount|bankaccount|cashbank|bankof|hdfc|icici|axis|sbi/.test(text)) return "cashBank";
-  if (/advancesrecoverable|advanceto|advancepaid|loans?andadvances?|securitydeposit/.test(text)) return "loansAdvances";
+  const advanceClass = classifyAdvanceByIntent(text);
+  if (advanceClass) return advanceClass;
+  if (/advancesrecoverable|advancepaid|loans?andadvances?/.test(text)) return "loansAdvances";
   if (/gstitc|tdsreceivable|othercurrentassets?|inputcredit|prepaid|receivable|statutoryreceivable/.test(text)) return "otherCurrentAssets";
   if (/advancefromcustomer|salarypayable|tdspayable|reimbursementpayable|reimbursementdue|outstanding|expensepayable|statutorydues|gstpayable|payable/.test(text)) return "otherCurrentLiabilities";
   if (/loans?andadvances?|advanceagainstloan/.test(text)) return "loansAdvances";
-  if (/loan|debenture|longterm|deferred|mortgage/.test(text) && !/workingcapital|bankod|cashcredit|cc\b|overdraft/.test(text)) return "otherLongTermLiabilities";
+  if (/loan|debenture|longterm|deferred|mortgage/.test(text) && !isBankOdConcept(text)) return "otherLongTermLiabilities";
   if (/stock|invent/.test(text)) return "inventory";
   return null;
 }
@@ -324,7 +336,14 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
   const parentChildWarnings = [];
 
   const queueCandidate = (key, head, mode) => {
-    candidates.push({ key, head, mode, normalized: normalizeConcept(head.head), amount: head.amount, rowNumber: head.rowNumber || 999999 });
+    candidates.push({
+      key,
+      head,
+      mode,
+      normalized: normalizeConcept(head.head).replace(/accounts?|account|ledger$/, ""),
+      amount: head.amount,
+      rowNumber: head.rowNumber || 999999,
+    });
   };
 
   MAP_FIELDS.forEach((field) => {
@@ -404,7 +423,7 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
 
   const byBucketAndConcept = new Map();
   singleBucketCandidates.forEach((candidate) => {
-    const concept = `${candidate.key}::${candidate.normalized.replace(/accounts?$/, "")}`;
+    const concept = `${candidate.key}::${candidate.normalized}`;
     if (!byBucketAndConcept.has(concept)) {
       byBucketAndConcept.set(concept, candidate);
       return;
@@ -417,7 +436,7 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
       head: dropped.head.head,
       amount: dropped.amount,
       key: dropped.key,
-      reason: `Duplicate concept with ${better.head.head}`,
+      reason: `Duplicate mapping: same concept as ${better.head.head}`,
     });
     pushSource(dropped.key, dropped.head, dropped.mode, "duplicate-concept-suppressed");
   });
@@ -438,7 +457,8 @@ function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
         const otherNorm = normalize(other.head.head);
         const contains = rowNorm.includes(otherNorm) || otherNorm.includes(rowNorm);
         const nearEqual = Math.abs(row.amount - other.amount) <= Math.max(row.amount, other.amount) * 0.02;
-        if (!contains || !nearEqual) return;
+        const closeRows = Math.abs((row.rowNumber || 0) - (other.rowNumber || 0)) <= 3;
+        if (!contains || !nearEqual || !closeRows) return;
         const likelyParent = /accounts?|group|total|liabilit|asset/.test(rowNorm) ? row : other;
         const likelyChild = likelyParent === row ? other : row;
         suppressed.add(likelyParent);
@@ -507,13 +527,15 @@ function classifyFallbackBucket(head) {
 
   if (/sundrydebtor|tradereceivable|debtor/.test(text)) return "tradeReceivables";
   if (/sundrycreditor|tradecreditor|creditor/.test(text)) return "tradeCreditors";
-  if (/bankod|cashcredit|workingcapital|cc\b|overdraft/.test(text)) return "ccBorrowing";
+  if (isBankOdConcept(text)) return "ccBorrowing";
   if (/cashinhand|cashatbank|bankbalance|currentaccount|bankaccount|overdraftaccount|cashbank/.test(text)) return "cashBank";
-  if (/advancetohardik|advancerent|securitydeposit|advancesalary|loanandadvance|advancepaid/.test(text)) return "loansAdvances";
+  const advanceClass = classifyAdvanceByIntent(text);
+  if (advanceClass) return advanceClass;
+  if (/advancetohardik|advancerent|advancesalary|loanandadvance|advancepaid/.test(text)) return "loansAdvances";
   if (/gstitc|tdsreceivable|othercurrentasset|inputcredit|prepaid/.test(text)) return "otherCurrentAssets";
   if (/advancefromcustomer|salarypayable|reimbursementdue|tdspayable|kmr/.test(text)) return "otherCurrentLiabilities";
   if (/creditor|payable|dut|tax|gst|expensepayable|provision|outstanding|accrued|liabilit/.test(text)) return "otherCurrentLiabilities";
-  if (/loan|debenture|longterm|deferred|borrow|mortgage/.test(text) && !/workingcapital|bankod|cashcredit|cc\b|overdraft/.test(text)) return "otherLongTermLiabilities";
+  if (/loan|debenture|longterm|deferred|borrow|mortgage/.test(text) && !isBankOdConcept(text)) return "otherLongTermLiabilities";
   if (/stock|invent/.test(text)) return "inventory";
   if (/advance|currentasset/.test(text)) return "otherCurrentAssets";
   return "otherNonCurrentAssets";
@@ -676,10 +698,11 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
     }
 
     const netWorkingCapital = totalCurrentAssets - totalCurrentLiabilities;
-    const workingCapitalGap = Math.max(totalCurrentAssets - (tradeCreditors + otherCurrentLiabilities), 0);
-    const borrowerMargin = Math.max(netWorkingCapital, 0);
-    const requiredBankFinance = Math.max(workingCapitalGap - borrowerMargin, 0);
-    const shortfall = Math.max(requiredBankFinance - existingCCLimit, 0);
+    const otherCurrentLiabilitiesOnly = tradeCreditors + otherCurrentLiabilities;
+    const workingCapitalGap = Math.max(totalCurrentAssets - otherCurrentLiabilitiesOnly, 0);
+    const mpbf = Math.max((0.75 * totalCurrentAssets) - otherCurrentLiabilitiesOnly, 0);
+    const borrowerContribution = Math.max(workingCapitalGap - mpbf, 0);
+    const shortfall = Math.max(mpbf - existingCCLimit, 0);
     const proposedCCLimit = isHistoricalYear ? historicalCcOutstanding : existingCCLimit + shortfall;
 
     const installment = termLoan.applicable ? termLoan.rows[idx].installment : 0;
@@ -741,10 +764,11 @@ function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
         totalCurrentLiabilities,
         netWorkingCapital,
         workingCapitalGap,
-        borrowerMargin,
-        bankFinanceRequired: requiredBankFinance,
+        borrowerContribution,
+        mpbf,
+        bankFinanceRequired: mpbf,
         currentRatio: safeDivide(totalCurrentAssets, totalCurrentLiabilities),
-        requiredWorkingCapital: requiredBankFinance,
+        requiredWorkingCapital: mpbf,
         existingLimit: isHistoricalYear ? historicalCcOutstanding : existingCCLimit,
         proposedLimit: proposedCCLimit,
         shortfall,
@@ -851,14 +875,15 @@ function renderReport(report) {
     { label: "Total Current Liabilities", values: report.years.map((y) => y.workingCapital.totalCurrentLiabilities) },
     { label: "Net Working Capital", values: report.years.map((y) => y.workingCapital.netWorkingCapital) },
     { label: "Working Capital Gap", values: report.years.map((y) => y.workingCapital.workingCapitalGap) },
-    { label: "Borrower Margin", values: report.years.map((y) => y.workingCapital.borrowerMargin) },
+    { label: "Borrower Contribution", values: report.years.map((y) => y.workingCapital.borrowerContribution) },
+    { label: "MPBF (Tandon Method II)", values: report.years.map((y) => y.workingCapital.mpbf) },
     { label: "Bank Finance Required", values: report.years.map((y) => y.workingCapital.bankFinanceRequired) },
     { label: "Current Ratio", values: report.years.map((y) => y.workingCapital.currentRatio) },
   ];
 
   const ccRows = [
     { label: "Projected Sales", values: report.years.map((y) => y.workingCapital.projectedSales) },
-    { label: "Bank Finance Required", values: report.years.map((y) => y.workingCapital.requiredWorkingCapital) },
+    { label: "MPBF", values: report.years.map((y) => y.workingCapital.requiredWorkingCapital) },
     { label: "Existing Limit", values: report.years.map((y) => y.workingCapital.existingLimit) },
     { label: "Shortfall", values: report.years.map((y) => y.workingCapital.shortfall) },
     { label: "Proposed CC Limit", values: report.years.map((y) => y.workingCapital.proposedLimit) },
@@ -880,7 +905,7 @@ function renderReport(report) {
   const ratioTableRows = ratioLabels.map((label) => ({ label, values: ratioRows.map((row) => row[label]) }));
 
   const termLoanHtml = report.termLoan.applicable
-    ? buildSectionHtml("Term Loan Schedule", ["Opening Balance", "Installment", "Interest", "Closing Balance"], report.termLoan.rows.map((r) => ({ label: r.year, values: [r.opening, r.installment, r.interest, r.closing] })))
+    ? buildSectionHtml("Term Loan Schedule", ["Opening", "Principal Repayment", "Interest", "Closing"], report.termLoan.rows.map((r) => ({ label: r.year, values: [r.opening, r.installment, r.interest, r.closing] })))
     : "";
   const historicalDebugHtml = buildHistoricalDebugHtml(report);
 
@@ -892,7 +917,7 @@ function renderReport(report) {
       ${buildSectionHtml("Profit & Loss", periods, plRows, (value, label) => (label.includes("Ratio") ? fmtNumber(value) : fmtCurrency(value)))}
       ${buildSectionHtml("Balance Sheet", periods, bsRows)}
       ${buildSectionHtml("Working Capital", periods, wcRows, (value, label) => (label.includes("Ratio") ? fmtNumber(value) : fmtCurrency(value)))}
-      ${buildSectionHtml("CC Limit Assessment (Year | Projected Sales | Required WC | Existing Limit | Shortfall)", periods, ccRows)}
+      ${buildSectionHtml("CC Limit Assessment (Tandon Method II)", periods, ccRows)}
       ${buildSectionHtml("Ratio Analysis", periods, ratioTableRows, (value, label) => {
     if (label.includes("Days")) return fmtNumber(value);
     if (label === "GP Ratio" || label === "NP Ratio") return fmtPct(value);
@@ -1118,14 +1143,15 @@ function downloadExcel() {
     ["Total Current Liabilities", ...periods.map(() => "")],
     ["Net Working Capital", ...periods.map(() => "")],
     ["Working Capital Gap", ...periods.map(() => "")],
-    ["Borrower Margin", ...periods.map(() => "")],
+    ["Borrower Contribution", ...periods.map(() => "")],
+    ["MPBF (Tandon Method II)", ...periods.map(() => "")],
     ["Bank Finance Required", ...periods.map(() => "")],
     ["Current Ratio", ...periods.map(() => "")],
     [],
     ["CC Limit Assessment"],
     ["Particulars", ...periods],
     ["Projected Sales", ...years.map((y) => y.workingCapital.projectedSales)],
-    ["Bank Finance Required", ...years.map((y) => y.workingCapital.requiredWorkingCapital)],
+    ["MPBF", ...years.map((y) => y.workingCapital.requiredWorkingCapital)],
     ["Existing Limit", ...years.map((y) => y.workingCapital.existingLimit)],
     ["Shortfall", ...years.map((y) => y.workingCapital.shortfall)],
     ["Proposed CC Limit", ...years.map((y) => y.workingCapital.proposedLimit)],
@@ -1137,9 +1163,10 @@ function downloadExcel() {
     setFormula(wcWs, 4, c, `'Current Liabilities'!${toCell(6, c)}`, "₹#,##0");
     setFormula(wcWs, 5, c, `${toCell(3, c)}-${toCell(4, c)}`, "₹#,##0");
     setFormula(wcWs, 6, c, `${toCell(3, c)}-('Current Liabilities'!${toCell(4, c)}+'Current Liabilities'!${toCell(5, c)})`, "₹#,##0");
-    setFormula(wcWs, 7, c, `MAX(${toCell(5, c)},0)`, "₹#,##0");
-    setFormula(wcWs, 8, c, `MAX(${toCell(6, c)}-${toCell(7, c)},0)`, "₹#,##0");
-    setFormula(wcWs, 9, c, `${toCell(3, c)}/${toCell(4, c)}`, "0.00");
+    setFormula(wcWs, 7, c, `MAX(${toCell(6, c)}-MAX((0.75*${toCell(3, c)})-('Current Liabilities'!${toCell(4, c)}+'Current Liabilities'!${toCell(5, c)}),0),0)`, "₹#,##0");
+    setFormula(wcWs, 8, c, `MAX((0.75*${toCell(3, c)})-('Current Liabilities'!${toCell(4, c)}+'Current Liabilities'!${toCell(5, c)}),0)`, "₹#,##0");
+    setFormula(wcWs, 9, c, `${toCell(8, c)}`, "₹#,##0");
+    setFormula(wcWs, 10, c, `${toCell(3, c)}/${toCell(4, c)}`, "0.00");
   });
 
   const ratioLabels = ["Current Ratio", "Quick Ratio", "GP Ratio", "NP Ratio", "TOL / TNW", "Debtor Days", "Creditor Days", "Inventory Days", "Interest Coverage", "DSCR"];
@@ -1147,7 +1174,7 @@ function downloadExcel() {
 
   periods.forEach((_, idx) => {
     const c = idx + 2;
-    setFormula(ratioWs, 3, c, `'Working Capital'!${toCell(9, c)}`, "0.00");
+    setFormula(ratioWs, 3, c, `'Working Capital'!${toCell(10, c)}`, "0.00");
     setFormula(ratioWs, 4, c, `('Balance Sheet'!${toCell(24, c)}-'Balance Sheet'!${toCell(19, c)})/'Balance Sheet'!${toCell(13, c)}`, "0.00");
     setFormula(ratioWs, 5, c, `'Profit & Loss'!${toCell(11, c)}/'Profit & Loss'!${toCell(3, c)}*100`, "0.00");
     setFormula(ratioWs, 6, c, `'Profit & Loss'!${toCell(22, c)}/'Profit & Loss'!${toCell(3, c)}*100`, "0.00");
@@ -1162,7 +1189,7 @@ function downloadExcel() {
   const tlWs = workbookState.generated.termLoan.applicable
     ? XLSX.utils.aoa_to_sheet([
       ["Term Loan"],
-      ["Year", "Opening", "Installment", "Interest", "Closing"],
+      ["Year", "Opening", "Principal Repayment", "Interest", "Closing"],
       ...workbookState.generated.termLoan.rows.map((r) => [r.year, r.opening, r.installment, r.interest, r.closing]),
     ])
     : XLSX.utils.aoa_to_sheet([["Term Loan"], ["Not Applicable"]]);
