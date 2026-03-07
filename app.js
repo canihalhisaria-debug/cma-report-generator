@@ -17,6 +17,8 @@ const downloadJsonBtn = document.getElementById("download-json");
 const mappingReview = document.getElementById("mapping-review");
 const mappingGrid = document.getElementById("mapping-grid");
 const mappingWarningPanel = document.getElementById("mapping-warning-panel");
+const historicalLockModeInput = document.getElementById("historical-lock-mode");
+const downloadTraceBtn = document.getElementById("download-trace");
 
 const configIds = [
   "borrower-name", "constitution", "pan", "gstin", "bank-name", "branch-name", "existing-limit", "proposed-limit", "facility-type",
@@ -85,6 +87,7 @@ generateCurrentBtn.addEventListener("click", () => generateReport({ useCurrentMa
 downloadReportBtn.addEventListener("click", downloadReport);
 downloadExcelBtn.addEventListener("click", downloadExcel);
 downloadJsonBtn.addEventListener("click", downloadJson);
+downloadTraceBtn?.addEventListener("click", downloadHistoricalTrace);
 
 function getNumeric(value, fallback = 0) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -152,6 +155,7 @@ function bestMatchForField(field, heads) {
     let score = 0;
     field.aliases.forEach((alias) => {
       const aliasNorm = normalize(alias);
+      if (field.key === "directExpenses" && /indirectexpenses?/.test(headRow.normalized)) return;
       if (headRow.normalized === aliasNorm) score += 1;
       else if (headRow.normalized.includes(aliasNorm) || aliasNorm.includes(headRow.normalized)) score += 0.7;
     });
@@ -257,71 +261,82 @@ function getMappedAmount(selectedHead, section) {
   return workbookState.parsed.allHeads.find((h) => h.head === selectedHead && h.section === section)?.amount || 0;
 }
 
-function mappedFinancialsFromParse() {
+function strictHistoricalBucket(head) {
+  const text = normalize(head.head);
+  if (head.section === "pl") {
+    if (/indirectexpenses?|administrative|officeexpense|generalandadmin/.test(text)) return "adminExpenses";
+    if (/otheroperatingexpenses?|miscoperatingexpenses?/.test(text)) return "otherOperatingExpenses";
+    if (/openingstock|openinginventory/.test(text)) return "openingStock";
+    if (/purchaseaccounts?|purchases?/.test(text)) return "purchases";
+    return null;
+  }
+
+  if (/sundrydebtors?|tradereceivables?|debtors?/.test(text)) return "tradeReceivables";
+  if (/sundrycreditors?|tradecreditors?|creditors?/.test(text)) return "tradeCreditors";
+  if (/bankod|cashcredit|workingcapitalborrow|cc\b/.test(text)) return "ccBorrowing";
+  if (/capitalaccount|partnerscapital|capital\b/.test(text)) return "capital";
+  if (/cashinhand|cashatbank|bankbalance|currentbank|currentaccount|bankaccount|cashbank/.test(text)) return "cashBank";
+  if (/gstitc|tdsreceivable|othercurrentassets?|inputcredit|prepaid/.test(text)) return "otherCurrentAssets";
+  if (/advancefromcustomer|salarypayable|tdspayable|reimbursementpayable|reimbursementdue/.test(text)) return "otherCurrentLiabilities";
+  if (/loans?andadvances?|advancesrecoverable/.test(text)) return "loansAdvances";
+  return null;
+}
+
+function mappedFinancialsFromParse({ historicalLockMode = true } = {}) {
   if (!workbookState.parsed) throw new Error("Upload and parse workbook first.");
 
   const mapped = {};
   const historicalSources = {};
   MAP_FIELDS.forEach((field) => {
+    mapped[field.key] = 0;
     historicalSources[field.key] = [];
   });
+
+  const pushSource = (key, head, mode) => {
+    mapped[key] = (mapped[key] || 0) + head.amount;
+    historicalSources[key].push({
+      head: head.head,
+      section: head.section,
+      sheet: head.section === "pl" ? workbookState.parsed.plSheetName : workbookState.parsed.bsSheetName,
+      amount: head.amount,
+      mode,
+    });
+  };
+
   MAP_FIELDS.forEach((field) => {
     const selectedHead = workbookState.mapping[field.key];
-    const amount = getMappedAmount(selectedHead, field.section);
-    mapped[field.key] = amount;
-    if (selectedHead) {
-      historicalSources[field.key].push({
-        head: selectedHead,
-        section: field.section,
-        amount,
-        mode: "explicit-mapping",
-      });
-    }
+    if (!selectedHead) return;
+    const head = workbookState.parsed.allHeads.find((h) => h.head === selectedHead && h.section === field.section);
+    if (!head) return;
+    pushSource(field.key, head, "explicit-mapping");
   });
 
   const fallbackDefaults = [];
-
   Object.entries(DEFAULT_FALLBACKS).forEach(([key, fallback]) => {
-    const selectedHead = workbookState.mapping[key];
-    if (!selectedHead) {
-      mapped[key] = fallback.value;
-      const field = MAP_FIELDS.find((f) => f.key === key);
-      fallbackDefaults.push({
-        key,
-        label: field?.label || key,
-        value: fallback.value,
-        note: fallback.note,
-      });
+    if ((mapped[key] || 0) !== 0) return;
+    if (key === "openingStock") {
+      fallbackDefaults.push({ key, label: "Opening Stock", value: 0, note: "Historical lock: default 0 when opening stock not mapped" });
+      return;
     }
+    if (historicalLockMode && ["otherIncome", "loansAdvances", "otherCurrentAssets", "otherCurrentLiabilities", "termLoan"].includes(key)) return;
+    mapped[key] = fallback.value;
+    const field = MAP_FIELDS.find((f) => f.key === key);
+    fallbackDefaults.push({ key, label: field?.label || key, value: fallback.value, note: fallback.note });
   });
 
-  // If Closing Stock is not mapped from P&L but Inventory is mapped from BS, reuse it for core coverage.
-  if (!workbookState.mapping.closingStock && workbookState.mapping.inventory) {
-    mapped.closingStock = mapped.inventory;
-    fallbackDefaults.push({
-      key: "closingStock",
-      label: "Closing Stock",
-      value: mapped.inventory,
-      note: "Reused mapped Inventory",
-    });
-  }
+  const fallbackWarnings = [];
   const mappedHeadsBySection = {
     pl: new Set(MAP_FIELDS.filter((f) => f.section === "pl").map((f) => workbookState.mapping[f.key]).filter(Boolean)),
     bs: new Set(MAP_FIELDS.filter((f) => f.section === "bs").map((f) => workbookState.mapping[f.key]).filter(Boolean)),
   };
 
-  const fallbackWarnings = [];
   workbookState.parsed.allHeads
     .filter((head) => !mappedHeadsBySection[head.section].has(head.head))
     .forEach((head) => {
-      const fallbackKey = classifyFallbackBucket(head);
-      mapped[fallbackKey] = (mapped[fallbackKey] || 0) + head.amount;
-      historicalSources[fallbackKey].push({
-        head: head.head,
-        section: head.section,
-        amount: head.amount,
-        mode: "auto-fallback",
-      });
+      const fallbackKey = historicalLockMode ? strictHistoricalBucket(head) : classifyFallbackBucket(head);
+      if (!fallbackKey) return;
+      if (historicalLockMode && ["otherIncome", "openingStock", "termLoan"].includes(fallbackKey)) return;
+      pushSource(fallbackKey, head, historicalLockMode ? "historical-rule" : "auto-fallback");
       fallbackWarnings.push({
         head: head.head,
         section: head.section,
@@ -418,7 +433,7 @@ function buildTermLoanSchedule(periods, fallbackAmount = 0) {
   return { applicable: true, rows };
 }
 
-function buildCmaReport(mapped) {
+function buildCmaReport(mapped, { historicalLockMode = true } = {}) {
   const periods = projectionPeriods();
   const salesGrowth = getConfigNumber("sales-growth", 10) / 100;
   const otherIncomePct = getConfigNumber("other-income-ratio", 1.5) / 100;
@@ -433,6 +448,7 @@ function buildCmaReport(mapped) {
   const creditorDays = getConfigNumber("payable-days", 30);
 
   const existingCCLimit = getConfigNumber("cc-limit", mapped.ccBorrowing || 0);
+  const historicalCcOutstanding = mapped.ccBorrowing || 0;
   const termLoan = buildTermLoanSchedule(periods, mapped.termLoan || 0);
   const years = [];
 
@@ -481,7 +497,7 @@ function buildCmaReport(mapped) {
     const otherLongTermLiabilities = isHistoricalYear ? mapped.otherLongTermLiabilities : prev.bs["Other Long Term Liabilities"];
     const totalNonCurrentLiabilities = termLoanOutstanding + unsecuredLoans + otherLongTermLiabilities;
 
-    const ccOd = isHistoricalYear ? mapped.ccBorrowing : existingCCLimit;
+    const ccOd = isHistoricalYear && historicalLockMode ? historicalCcOutstanding : (isHistoricalYear ? mapped.ccBorrowing : existingCCLimit);
     const tradeCreditors = isHistoricalYear ? mapped.tradeCreditors : (purchases * creditorDays) / 365;
     const otherCurrentLiabilities = isHistoricalYear ? mapped.otherCurrentLiabilities : sales * 0.015;
     const totalCurrentLiabilities = ccOd + tradeCreditors + otherCurrentLiabilities;
@@ -503,7 +519,7 @@ function buildCmaReport(mapped) {
 
     const requiredWc = Math.max(totalCurrentAssets - totalCurrentLiabilities, 0);
     const shortfall = Math.max(requiredWc - existingCCLimit, 0);
-    const proposedCCLimit = existingCCLimit + shortfall;
+    const proposedCCLimit = isHistoricalYear && historicalLockMode ? historicalCcOutstanding : existingCCLimit + shortfall;
 
     const installment = termLoan.applicable ? termLoan.rows[idx].installment : 0;
     const dscr = termLoan.applicable ? safeDivide(pat + depreciation + tlInterest, installment + tlInterest) : null;
@@ -591,6 +607,7 @@ function buildCmaReport(mapped) {
       "Existing CC Limit": existingCCLimit,
       "Facility Type": getConfigText("facility-type"),
       "Prepared Date": getConfigText("prepared-date"),
+      "Historical Lock Mode": historicalLockMode ? "Enabled" : "Disabled",
     },
   };
 }
@@ -610,19 +627,18 @@ function buildSectionHtml(title, periods, rows, formatter = fmtCurrency) {
 
 function buildHistoricalDebugHtml(report) {
   const fieldLabel = Object.fromEntries(MAP_FIELDS.map((f) => [f.key, f.label]));
-  const debugRows = Object.entries(report.meta?.historicalDebug?.values || {}).map(([key, value]) => {
-    const sources = report.meta?.historicalDebug?.sources?.[key] || [];
-    const sourceText = sources.length
-      ? sources.map((src) => `${src.head} (${src.section.toUpperCase()} - ${src.mode} - ${fmtCurrency(src.amount)})`).join("; ")
-      : "No source row mapped";
-    return `<tr><td>${fieldLabel[key] || key}</td><td>${fmtCurrency(value)}</td><td>${sourceText}</td></tr>`;
+  const debugRows = Object.entries(report.meta?.historicalDebug?.sources || {}).flatMap(([key, sources]) => {
+    if (!sources.length) {
+      return [`<tr><td>${fieldLabel[key] || key}</td><td>-</td><td>Not mapped</td><td>${fmtCurrency(report.meta?.historicalDebug?.values?.[key] || 0)}</td><td>${fieldLabel[key] || key}</td></tr>`];
+    }
+    return sources.map((src) => `<tr><td>${fieldLabel[key] || key}</td><td>${src.sheet || src.section.toUpperCase()}</td><td>${src.head}</td><td>${fmtCurrency(src.amount)}</td><td>${fieldLabel[key] || key} (${src.mode})</td></tr>`);
   }).join("");
 
   return `
     <section class="report-section">
       <h3>FY-1 Historical Mapping Debug Review</h3>
       <table>
-        <thead><tr><th>Final Line Item</th><th>FY-1 Value</th><th>Source Rows Used</th></tr></thead>
+        <thead><tr><th>Final CMA Line Item</th><th>Source Sheet</th><th>Source Row Label</th><th>Source Value</th><th>Final Assigned Bucket</th></tr></thead>
         <tbody>${debugRows}</tbody>
       </table>
     </section>
@@ -708,7 +724,8 @@ function generateReport({ useCurrentMapping = false } = {}) {
   try {
     if (!workbookState.parsed) throw new Error(workbookState.parseError || "Upload workbook first.");
 
-    const { mapped, fallbackWarnings, fallbackDefaults, missingMandatory, historicalSources } = mappedFinancialsFromParse();
+    const historicalLockMode = historicalLockModeInput?.checked !== false;
+    const { mapped, fallbackWarnings, fallbackDefaults, missingMandatory, historicalSources } = mappedFinancialsFromParse({ historicalLockMode });
     if (missingMandatory.length) throw new Error(`Please map core heads: ${missingMandatory.join(", ")}`);
 
     workbookState.generated = {
@@ -717,6 +734,7 @@ function generateReport({ useCurrentMapping = false } = {}) {
         sourceBS: workbookState.parsed.bsSheetName,
         generatedAt: new Date().toISOString(),
         generationMode: useCurrentMapping ? "current-mapping" : "standard",
+        historicalLockMode,
         warnings: {
           missingMandatory,
           fallbackAssignments: fallbackWarnings,
@@ -727,7 +745,7 @@ function generateReport({ useCurrentMapping = false } = {}) {
           sources: historicalSources,
         },
       },
-      ...buildCmaReport(mapped),
+      ...buildCmaReport(mapped, { historicalLockMode }),
     };
 
     // Insert display-only headers for professional grouping.
@@ -752,6 +770,7 @@ function generateReport({ useCurrentMapping = false } = {}) {
     downloadReportBtn.disabled = false;
     downloadExcelBtn.disabled = false;
     downloadJsonBtn.disabled = false;
+    if (downloadTraceBtn) downloadTraceBtn.disabled = false;
   } catch (error) {
     output.innerHTML = `<p class="bad">Cannot generate report: ${error.message}</p>`;
   }
@@ -975,6 +994,25 @@ function downloadExcel() {
   XLSX.utils.book_append_sheet(wb, dscrWs, "DSCR");
 
   XLSX.writeFile(wb, "banker-grade-cma-report.xlsx");
+}
+
+function downloadHistoricalTrace() {
+  if (!workbookState.generated?.meta?.historicalDebug) return;
+  const fieldLabel = Object.fromEntries(MAP_FIELDS.map((f) => [f.key, f.label]));
+  const rows = [["Final CMA Line Item", "Source Sheet", "Source Row Label", "Source Value", "Final Assigned Bucket"]];
+  Object.entries(workbookState.generated.meta.historicalDebug.sources || {}).forEach(([key, sources]) => {
+    if (!sources.length) {
+      rows.push([fieldLabel[key] || key, "-", "Not mapped", workbookState.generated.meta.historicalDebug.values?.[key] || 0, fieldLabel[key] || key]);
+      return;
+    }
+    sources.forEach((src) => {
+      rows.push([fieldLabel[key] || key, src.sheet || src.section.toUpperCase(), src.head, src.amount, `${fieldLabel[key] || key} (${src.mode})`]);
+    });
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Historical Trace");
+  XLSX.writeFile(wb, "historical-trace.xlsx");
 }
 
 function downloadJson() {
