@@ -9,12 +9,14 @@ const workbookState = {
 const fileInput = document.getElementById("excel-file");
 const sheetStatus = document.getElementById("sheet-status");
 const generateBtn = document.getElementById("generate-btn");
+const generateCurrentBtn = document.getElementById("generate-current-btn");
 const output = document.getElementById("output");
 const downloadReportBtn = document.getElementById("download-report");
 const downloadExcelBtn = document.getElementById("download-excel");
 const downloadJsonBtn = document.getElementById("download-json");
 const mappingReview = document.getElementById("mapping-review");
 const mappingGrid = document.getElementById("mapping-grid");
+const mappingWarningPanel = document.getElementById("mapping-warning-panel");
 
 const configIds = [
   "borrower-name", "constitution", "pan", "gstin", "bank-name", "branch-name", "existing-limit", "proposed-limit", "facility-type",
@@ -61,7 +63,8 @@ const MAP_FIELDS = [
 ];
 
 fileInput.addEventListener("change", handleWorkbookUpload);
-generateBtn.addEventListener("click", generateReport);
+generateBtn.addEventListener("click", () => generateReport({ useCurrentMapping: false }));
+generateCurrentBtn.addEventListener("click", () => generateReport({ useCurrentMapping: true }));
 downloadReportBtn.addEventListener("click", downloadReport);
 downloadExcelBtn.addEventListener("click", downloadExcel);
 downloadJsonBtn.addEventListener("click", downloadJson);
@@ -215,11 +218,15 @@ function handleWorkbookUpload(event) {
       sheetStatus.innerHTML = `<span class="good">Detected P&L: <strong>${workbookState.parsed.plSheetName}</strong> | Balance Sheet: <strong>${workbookState.parsed.bsSheetName}</strong></span>`;
       output.innerHTML = "<p class='good'>Workbook parsed successfully. Validate mapping (if shown) and generate report.</p>";
       generateBtn.disabled = false;
+      generateCurrentBtn.disabled = false;
+      renderMappingWarnings();
     } catch (error) {
       workbookState.parsed = null;
       workbookState.parseError = error.message;
       generateBtn.disabled = true;
+      generateCurrentBtn.disabled = true;
       mappingReview.classList.add("hidden");
+      renderMappingWarnings();
       sheetStatus.innerHTML = `<span class="bad">Upload parsing failed: ${error.message}</span>`;
       output.innerHTML = "<p class='bad'>Unable to parse workbook.</p>";
     }
@@ -241,11 +248,70 @@ function mappedFinancialsFromParse() {
     mapped[field.key] = getMappedAmount(workbookState.mapping[field.key], field.section);
   });
 
-  const mandatory = ["sales", "purchases", "inventory", "tradeReceivables", "tradeCreditors", "capital"];
-  const missing = mandatory.filter((key) => !mapped[key]);
-  if (missing.length) throw new Error(`Missing mapped values for: ${missing.join(", ")}`);
+  const mandatory = ["sales", "purchases", "inventory", "tradeReceivables", "tradeCreditors", "capital", "fixedAssets", "cashBank"];
+  const mappedHeadsBySection = {
+    pl: new Set(MAP_FIELDS.filter((f) => f.section === "pl").map((f) => workbookState.mapping[f.key]).filter(Boolean)),
+    bs: new Set(MAP_FIELDS.filter((f) => f.section === "bs").map((f) => workbookState.mapping[f.key]).filter(Boolean)),
+  };
 
-  return mapped;
+  const fallbackWarnings = [];
+  workbookState.parsed.allHeads
+    .filter((head) => !mappedHeadsBySection[head.section].has(head.head))
+    .forEach((head) => {
+      const fallbackKey = classifyFallbackBucket(head);
+      mapped[fallbackKey] = (mapped[fallbackKey] || 0) + head.amount;
+      fallbackWarnings.push({
+        head: head.head,
+        section: head.section,
+        amount: head.amount,
+        fallbackKey,
+        fallbackLabel: MAP_FIELDS.find((f) => f.key === fallbackKey)?.label || fallbackKey,
+      });
+    });
+
+  const missingMandatory = mandatory
+    .filter((key) => !mapped[key])
+    .map((key) => MAP_FIELDS.find((f) => f.key === key)?.label || key);
+
+  return { mapped, fallbackWarnings, missingMandatory };
+}
+
+function classifyFallbackBucket(head) {
+  const text = normalize(head.head);
+  if (head.section === "pl") {
+    if (/income|commission|discountreceived|incentive|rentreceived|interestreceived/.test(text)) return "otherIncome";
+    if (/raw|material|consum|manufact|factory|production|jobwork|carriageinward|power|fuel|packing/.test(text)) return "directExpenses";
+    if (/salary|wage|staff|employee|labou?r|pf|esi|bonus|gratuity/.test(text)) return "employeeCost";
+    if (/admin|office|audit|legal|professional|telephone|internet|printing|stationery|insurance|repair|maintenance/.test(text)) return "adminExpenses";
+    if (/selling|market|advert|salespromo|freightout|distribution|commissionpaid|travelling/.test(text)) return "sellingExpenses";
+    return "otherOperatingExpenses";
+  }
+
+  if (/creditor|payable|dut|tax|gst|expensepayable|provision|outstanding|accrued|liabilit/.test(text)) return "otherCurrentLiabilities";
+  if (/loan|debenture|longterm|deferred|borrow|mortgage/.test(text)) return "otherLongTermLiabilities";
+  if (/stock|invent|receivable|debtor|cash|bank|advance|prepaid|currentasset/.test(text)) return "otherCurrentAssets";
+  return "otherNonCurrentAssets";
+}
+
+function renderMappingWarnings({ fallbackWarnings = [], missingMandatory = [] } = {}) {
+  if (!fallbackWarnings.length && !missingMandatory.length) {
+    mappingWarningPanel.classList.add("hidden");
+    mappingWarningPanel.innerHTML = "";
+    return;
+  }
+
+  const fallbackItems = fallbackWarnings
+    .map((item) => `<li><strong>${item.head}</strong> (${item.section.toUpperCase()}, ${fmtCurrency(item.amount)}) → <strong>${item.fallbackLabel}</strong></li>`)
+    .join("");
+  const mandatoryItems = missingMandatory.map((item) => `<li>${item}</li>`).join("");
+
+  mappingWarningPanel.innerHTML = `
+    <h3>⚠️ Mapping Warnings</h3>
+    ${missingMandatory.length ? `<p><strong>Missing mandatory heads (used as zero):</strong></p><ul>${mandatoryItems}</ul>` : ""}
+    ${fallbackWarnings.length ? `<p><strong>Unmapped heads assigned to fallback buckets:</strong></p><ul>${fallbackItems}</ul>` : ""}
+  `;
+  mappingWarningPanel.classList.remove("hidden");
+
 }
 
 function projectionPeriods() {
@@ -535,20 +601,21 @@ function renderReport(report) {
     </article>`;
 }
 
-function generateReport() {
+function generateReport({ useCurrentMapping = false } = {}) {
   try {
     if (!workbookState.parsed) throw new Error(workbookState.parseError || "Upload workbook first.");
-    if (workbookState.parsed.needsReview) {
-      const unmapped = MAP_FIELDS.filter((f) => !workbookState.mapping[f.key]).map((f) => f.label);
-      if (unmapped.length) throw new Error(`Please complete mapping review. Unmapped heads: ${unmapped.join(", ")}.`);
-    }
 
-    const mapped = mappedFinancialsFromParse();
+    const { mapped, fallbackWarnings, missingMandatory } = mappedFinancialsFromParse();
     workbookState.generated = {
       meta: {
         sourcePL: workbookState.parsed.plSheetName,
         sourceBS: workbookState.parsed.bsSheetName,
         generatedAt: new Date().toISOString(),
+        generationMode: useCurrentMapping ? "current-mapping" : "standard",
+        warnings: {
+          missingMandatory,
+          fallbackAssignments: fallbackWarnings,
+        },
       },
       ...buildCmaReport(mapped),
     };
@@ -568,6 +635,7 @@ function generateReport() {
     });
 
     renderReport(workbookState.generated);
+    renderMappingWarnings({ fallbackWarnings, missingMandatory });
     downloadReportBtn.disabled = false;
     downloadExcelBtn.disabled = false;
     downloadJsonBtn.disabled = false;
