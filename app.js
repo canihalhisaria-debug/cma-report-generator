@@ -261,8 +261,22 @@ function mappedFinancialsFromParse() {
   if (!workbookState.parsed) throw new Error("Upload and parse workbook first.");
 
   const mapped = {};
+  const historicalSources = {};
   MAP_FIELDS.forEach((field) => {
-    mapped[field.key] = getMappedAmount(workbookState.mapping[field.key], field.section);
+    historicalSources[field.key] = [];
+  });
+  MAP_FIELDS.forEach((field) => {
+    const selectedHead = workbookState.mapping[field.key];
+    const amount = getMappedAmount(selectedHead, field.section);
+    mapped[field.key] = amount;
+    if (selectedHead) {
+      historicalSources[field.key].push({
+        head: selectedHead,
+        section: field.section,
+        amount,
+        mode: "explicit-mapping",
+      });
+    }
   });
 
   const fallbackDefaults = [];
@@ -302,6 +316,12 @@ function mappedFinancialsFromParse() {
     .forEach((head) => {
       const fallbackKey = classifyFallbackBucket(head);
       mapped[fallbackKey] = (mapped[fallbackKey] || 0) + head.amount;
+      historicalSources[fallbackKey].push({
+        head: head.head,
+        section: head.section,
+        amount: head.amount,
+        mode: "auto-fallback",
+      });
       fallbackWarnings.push({
         head: head.head,
         section: head.section,
@@ -315,13 +335,16 @@ function mappedFinancialsFromParse() {
     .filter((key) => !workbookState.mapping[key] && !(key === "closingStock" && workbookState.mapping.inventory))
     .map((key) => MAP_FIELDS.find((f) => f.key === key)?.label || key);
 
-  return { mapped, fallbackWarnings, fallbackDefaults, missingMandatory };
+  return { mapped, fallbackWarnings, fallbackDefaults, missingMandatory, historicalSources };
 }
 
 function classifyFallbackBucket(head) {
   const text = normalize(head.head);
   if (head.section === "pl") {
     if (/income|commission|discountreceived|incentive|rentreceived|interestreceived/.test(text)) return "otherIncome";
+    if (/openingstock|openinginventory/.test(text)) return "openingStock";
+    if (/purchase|purchaseaccount|purchaseaccounts/.test(text)) return "purchases";
+    if (/indirectexpenses|indirectexpense/.test(text)) return "adminExpenses";
     if (/raw|material|consum|manufact|factory|production|jobwork|carriageinward|power|fuel|packing/.test(text)) return "directExpenses";
     if (/salary|wage|staff|employee|labou?r|pf|esi|bonus|gratuity/.test(text)) return "employeeCost";
     if (/admin|office|audit|legal|professional|telephone|internet|printing|stationery|insurance|repair|maintenance/.test(text)) return "adminExpenses";
@@ -329,9 +352,17 @@ function classifyFallbackBucket(head) {
     return "otherOperatingExpenses";
   }
 
+  if (/sundrydebtor|tradereceivable|debtor/.test(text)) return "tradeReceivables";
+  if (/sundrycreditor|tradecreditor|creditor/.test(text)) return "tradeCreditors";
+  if (/bankod|cashcredit|cc|workingcapitalborrow/.test(text)) return "ccBorrowing";
+  if (/cashinhand|cashatbank|bankbalance|currentaccount|bankaccount|overdraftaccount|cashbank/.test(text)) return "cashBank";
+  if (/advancetohardik|advancerent|securitydeposit|advancesalary|loanandadvance|advancepaid/.test(text)) return "loansAdvances";
+  if (/gstitc|tdsreceivable|othercurrentasset|inputcredit|prepaid/.test(text)) return "otherCurrentAssets";
+  if (/advancefromcustomer|salarypayable|reimbursementdue|tdspayable|kmr/.test(text)) return "otherCurrentLiabilities";
   if (/creditor|payable|dut|tax|gst|expensepayable|provision|outstanding|accrued|liabilit/.test(text)) return "otherCurrentLiabilities";
   if (/loan|debenture|longterm|deferred|borrow|mortgage/.test(text)) return "otherLongTermLiabilities";
-  if (/stock|invent|receivable|debtor|cash|bank|advance|prepaid|currentasset/.test(text)) return "otherCurrentAssets";
+  if (/stock|invent/.test(text)) return "inventory";
+  if (/advance|currentasset/.test(text)) return "otherCurrentAssets";
   return "otherNonCurrentAssets";
 }
 
@@ -406,62 +437,65 @@ function buildCmaReport(mapped) {
   const years = [];
 
   periods.forEach((period, idx) => {
+    const isHistoricalYear = idx === 0;
     const prev = years[idx - 1];
-    const sales = idx === 0 ? mapped.sales : prev.pl.Sales * (1 + salesGrowth);
-    const otherIncome = idx === 0 ? (mapped.otherIncome || sales * otherIncomePct) : sales * otherIncomePct;
+    const sales = isHistoricalYear ? mapped.sales : prev.pl.Sales * (1 + salesGrowth);
+    const otherIncome = isHistoricalYear ? mapped.otherIncome : sales * otherIncomePct;
 
-    const openingStock = idx === 0 ? (mapped.openingStock || mapped.inventory * 0.9) : prev.pl["Less Closing Stock"];
-    const purchases = idx === 0 ? mapped.purchases : prev.pl.Purchases * (1 + salesGrowth * 0.95);
-    const directExpenses = idx === 0 ? (mapped.directExpenses || sales * 0.03) : prev.pl["Direct Expenses"] * (1 + salesGrowth * 0.9);
-    const closingStock = idx === 0 ? (mapped.closingStock || mapped.inventory) : (sales * inventoryDays) / 365;
+    const openingStock = isHistoricalYear ? mapped.openingStock : prev.pl["Less Closing Stock"];
+    const purchases = isHistoricalYear ? mapped.purchases : prev.pl.Purchases * (1 + salesGrowth * 0.95);
+    const directExpenses = isHistoricalYear ? mapped.directExpenses : prev.pl["Direct Expenses"] * (1 + salesGrowth * 0.9);
+    const closingStock = isHistoricalYear ? mapped.closingStock : (sales * inventoryDays) / 365;
 
     const goodsAvailable = openingStock + purchases + directExpenses;
     const cogs = goodsAvailable - closingStock;
     const totalIncome = sales + otherIncome;
     const grossProfit = totalIncome - cogs;
 
-    const employeeCost = idx === 0 ? (mapped.employeeCost || sales * employeePct) : sales * employeePct;
-    const administrativeExpenses = idx === 0 ? (mapped.adminExpenses || sales * adminPct) : sales * adminPct;
-    const sellingExpenses = idx === 0 ? (mapped.sellingExpenses || sales * sellingPct) : sales * sellingPct;
-    const otherOperatingExpenses = idx === 0 ? (mapped.otherOperatingExpenses || sales * 0.01) : sales * 0.01;
+    const employeeCost = isHistoricalYear ? mapped.employeeCost : sales * employeePct;
+    const administrativeExpenses = isHistoricalYear ? mapped.adminExpenses : sales * adminPct;
+    const sellingExpenses = isHistoricalYear ? mapped.sellingExpenses : sales * sellingPct;
+    const otherOperatingExpenses = isHistoricalYear ? mapped.otherOperatingExpenses : sales * 0.01;
     const totalOperatingExpenses = employeeCost + administrativeExpenses + sellingExpenses + otherOperatingExpenses;
     const ebitda = grossProfit - totalOperatingExpenses;
 
     const tlInterest = termLoan.applicable ? termLoan.rows[idx].interest : 0;
     const wcInterest = existingCCLimit * 0.11;
-    const interest = Math.max(mapped.interest || 0, wcInterest * 0.5) + tlInterest;
-    const depreciation = idx === 0
-      ? (mapped.depreciation || Math.max(mapped.fixedAssets, sales * 0.1) * deprPct)
+    const interest = isHistoricalYear
+      ? mapped.interest
+      : Math.max(mapped.interest || 0, wcInterest * 0.5) + tlInterest;
+    const depreciation = isHistoricalYear
+      ? mapped.depreciation
       : Math.max(prev.bs["Fixed Assets"] * deprPct, sales * 0.01);
 
     const pbt = ebitda - interest - depreciation;
-    const tax = idx === 0 && mapped.tax ? mapped.tax : Math.max(pbt, 0) * taxPct;
+    const tax = isHistoricalYear ? mapped.tax : Math.max(pbt, 0) * taxPct;
     const pat = pbt - tax;
 
-    const capital = idx === 0 ? mapped.capital : prev.bs.Capital;
-    const reserves = idx === 0 ? (mapped.reserves || capital * 0.2) : prev.bs.Reserves + prev.pl["Profit After Tax"] * 0.7;
+    const capital = isHistoricalYear ? mapped.capital : prev.bs.Capital;
+    const reserves = isHistoricalYear ? mapped.reserves : prev.bs.Reserves + prev.pl["Profit After Tax"] * 0.7;
     const netWorth = capital + reserves;
 
     const termLoanOutstanding = termLoan.applicable ? termLoan.rows[idx].opening : 0;
-    const unsecuredLoans = idx === 0 ? (mapped.unsecuredLoans || 0) : prev.bs["Unsecured Loans"];
-    const otherLongTermLiabilities = idx === 0 ? (mapped.otherLongTermLiabilities || 0) : prev.bs["Other Long Term Liabilities"];
+    const unsecuredLoans = isHistoricalYear ? mapped.unsecuredLoans : prev.bs["Unsecured Loans"];
+    const otherLongTermLiabilities = isHistoricalYear ? mapped.otherLongTermLiabilities : prev.bs["Other Long Term Liabilities"];
     const totalNonCurrentLiabilities = termLoanOutstanding + unsecuredLoans + otherLongTermLiabilities;
 
-    const ccOd = existingCCLimit;
-    const tradeCreditors = idx === 0 ? mapped.tradeCreditors : (purchases * creditorDays) / 365;
-    const otherCurrentLiabilities = idx === 0 ? (mapped.otherCurrentLiabilities || sales * 0.015) : sales * 0.015;
+    const ccOd = isHistoricalYear ? mapped.ccBorrowing : existingCCLimit;
+    const tradeCreditors = isHistoricalYear ? mapped.tradeCreditors : (purchases * creditorDays) / 365;
+    const otherCurrentLiabilities = isHistoricalYear ? mapped.otherCurrentLiabilities : sales * 0.015;
     const totalCurrentLiabilities = ccOd + tradeCreditors + otherCurrentLiabilities;
 
-    const fixedAssets = idx === 0 ? (mapped.fixedAssets || sales * 0.18) : Math.max(prev.bs["Fixed Assets"] * 0.95, sales * 0.15);
-    const investments = idx === 0 ? (mapped.investments || 0) : prev.bs.Investments;
-    const otherNonCurrentAssets = idx === 0 ? (mapped.otherNonCurrentAssets || 0) : prev.bs["Other Non Current Assets"];
+    const fixedAssets = isHistoricalYear ? mapped.fixedAssets : Math.max(prev.bs["Fixed Assets"] * 0.95, sales * 0.15);
+    const investments = isHistoricalYear ? mapped.investments : prev.bs.Investments;
+    const otherNonCurrentAssets = isHistoricalYear ? mapped.otherNonCurrentAssets : prev.bs["Other Non Current Assets"];
     const totalNonCurrentAssets = fixedAssets + investments + otherNonCurrentAssets;
 
     const inventory = closingStock;
-    const tradeReceivables = idx === 0 ? mapped.tradeReceivables : (sales * debtorDays) / 365;
-    const cashBank = idx === 0 ? (mapped.cashBank || sales * 0.03) : Math.max(prev.bs["Cash & Bank"] + pat * 0.12, 0);
-    const loansAdvances = idx === 0 ? (mapped.loansAdvances || sales * 0.01) : prev.bs["Loans & Advances"];
-    const otherCurrentAssets = idx === 0 ? (mapped.otherCurrentAssets || sales * 0.01) : sales * 0.01;
+    const tradeReceivables = isHistoricalYear ? mapped.tradeReceivables : (sales * debtorDays) / 365;
+    const cashBank = isHistoricalYear ? mapped.cashBank : Math.max(prev.bs["Cash & Bank"] + pat * 0.12, 0);
+    const loansAdvances = isHistoricalYear ? mapped.loansAdvances : prev.bs["Loans & Advances"];
+    const otherCurrentAssets = isHistoricalYear ? mapped.otherCurrentAssets : sales * 0.01;
     const totalCurrentAssets = inventory + tradeReceivables + cashBank + loansAdvances + otherCurrentAssets;
 
     const totalLiabilities = netWorth + totalNonCurrentLiabilities + totalCurrentLiabilities;
@@ -574,6 +608,27 @@ function buildSectionHtml(title, periods, rows, formatter = fmtCurrency) {
   return `<section class="report-section"><h3>${title}</h3><table><thead>${head}</thead><tbody>${body}</tbody></table></section>`;
 }
 
+function buildHistoricalDebugHtml(report) {
+  const fieldLabel = Object.fromEntries(MAP_FIELDS.map((f) => [f.key, f.label]));
+  const debugRows = Object.entries(report.meta?.historicalDebug?.values || {}).map(([key, value]) => {
+    const sources = report.meta?.historicalDebug?.sources?.[key] || [];
+    const sourceText = sources.length
+      ? sources.map((src) => `${src.head} (${src.section.toUpperCase()} - ${src.mode} - ${fmtCurrency(src.amount)})`).join("; ")
+      : "No source row mapped";
+    return `<tr><td>${fieldLabel[key] || key}</td><td>${fmtCurrency(value)}</td><td>${sourceText}</td></tr>`;
+  }).join("");
+
+  return `
+    <section class="report-section">
+      <h3>FY-1 Historical Mapping Debug Review</h3>
+      <table>
+        <thead><tr><th>Final Line Item</th><th>FY-1 Value</th><th>Source Rows Used</th></tr></thead>
+        <tbody>${debugRows}</tbody>
+      </table>
+    </section>
+  `;
+}
+
 function renderReport(report) {
   const periods = report.periods;
   const summaryRows = Object.entries(report.borrowerSummary)
@@ -629,11 +684,13 @@ function renderReport(report) {
   const termLoanHtml = report.termLoan.applicable
     ? buildSectionHtml("Term Loan Schedule", ["Opening Balance", "Installment", "Interest", "Closing Balance"], report.termLoan.rows.map((r) => ({ label: r.year, values: [r.opening, r.installment, r.interest, r.closing] })))
     : "";
+  const historicalDebugHtml = buildHistoricalDebugHtml(report);
 
   output.innerHTML = `
     <article class="cma-report">
       <header class="report-header"><h2>Banker Grade CMA Report</h2></header>
       <section class="report-section"><h3>Summary</h3><table><tbody>${summaryRows}</tbody></table></section>
+      ${historicalDebugHtml}
       ${buildSectionHtml("Profit & Loss", periods, plRows, (value, label) => (label.includes("Ratio") ? fmtNumber(value) : fmtCurrency(value)))}
       ${buildSectionHtml("Balance Sheet", periods, bsRows)}
       ${buildSectionHtml("Working Capital", periods, wcRows, (value, label) => (label.includes("Ratio") ? fmtNumber(value) : fmtCurrency(value)))}
@@ -651,7 +708,7 @@ function generateReport({ useCurrentMapping = false } = {}) {
   try {
     if (!workbookState.parsed) throw new Error(workbookState.parseError || "Upload workbook first.");
 
-    const { mapped, fallbackWarnings, fallbackDefaults, missingMandatory } = mappedFinancialsFromParse();
+    const { mapped, fallbackWarnings, fallbackDefaults, missingMandatory, historicalSources } = mappedFinancialsFromParse();
     if (missingMandatory.length) throw new Error(`Please map core heads: ${missingMandatory.join(", ")}`);
 
     workbookState.generated = {
@@ -664,6 +721,10 @@ function generateReport({ useCurrentMapping = false } = {}) {
           missingMandatory,
           fallbackAssignments: fallbackWarnings,
           fallbackDefaults,
+        },
+        historicalDebug: {
+          values: mapped,
+          sources: historicalSources,
         },
       },
       ...buildCmaReport(mapped),
