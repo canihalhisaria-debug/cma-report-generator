@@ -13,14 +13,30 @@
       <h1>CMA Report Generator</h1>
       <p>
         Browser-only CMA preparation for CA firms. Upload Excel, map periods,
-        project Cash Credit and Term Loan limits, and generate banker-ready
-        outputs.
+        configure working-capital and term-loan assumptions, and generate
+        banker-ready outputs for submission.
       </p>
     </header>
 
     <main class="layout">
       <section class="card">
-        <h2>1) Upload Client Workbook</h2>
+        <h2>1) Borrower / Proposal Summary</h2>
+        <div class="grid">
+          <label>Borrower Name <input id="borrower-name" type="text" value="ABC Industries Pvt Ltd" /></label>
+          <label>Constitution <input id="constitution" type="text" value="Private Limited Company" /></label>
+          <label>PAN <input id="pan" type="text" value="ABCDE1234F" /></label>
+          <label>GSTIN <input id="gstin" type="text" value="27ABCDE1234F1Z5" /></label>
+          <label>Bank <input id="bank-name" type="text" value="State Bank of India" /></label>
+          <label>Branch <input id="branch-name" type="text" value="Andheri Branch" /></label>
+          <label>Existing Limit (₹) <input id="existing-limit" type="number" value="5000000" /></label>
+          <label>Proposed Limit (₹) <input id="proposed-limit" type="number" value="8000000" /></label>
+          <label>Facility Type <input id="facility-type" type="text" value="Cash Credit + Term Loan" /></label>
+          <label>CMA Prepared Date <input id="prepared-date" type="date" /></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>2) Upload Client Workbook</h2>
         <p class="hint">
           Supports .xlsx / .xls files. Data is processed in your browser only.
         </p>
@@ -31,44 +47,66 @@
       </section>
 
       <section class="card">
-        <h2>2) Configure Periods</h2>
+        <h2>3) CMA Period & Projection Settings</h2>
         <div class="grid">
           <label>
-            Historical years (3 or 4)
+            Historical years
             <select id="historical-count">
-              <option value="3">3</option>
-              <option value="4" selected>4</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="4">4</option>
             </select>
           </label>
           <label>
-            Projection repayment years
-            <input id="projection-years" type="number" min="1" max="10" value="5" />
+            Projected years for Cash Credit
+            <input id="projection-years-cc" type="number" min="1" max="10" value="5" />
+          </label>
+          <label>
+            Term loan repayment period (years)
+            <input id="projection-years-tl" type="number" min="1" max="15" value="6" />
+          </label>
+          <label>
+            Moratorium (years)
+            <input id="moratorium-years" type="number" min="0" max="5" value="1" />
           </label>
           <label>
             Annual sales growth (%)
             <input id="sales-growth" type="number" value="10" step="0.1" />
           </label>
           <label>
+            Other income (% of sales)
+            <input id="other-income-ratio" type="number" value="1.5" step="0.1" />
+          </label>
+          <label>
             Gross margin (%)
             <input id="gross-margin" type="number" value="28" step="0.1" />
           </label>
           <label>
-            Receivable days
-            <input id="receivable-days" type="number" value="60" />
+            Employee cost (% of sales)
+            <input id="employee-ratio" type="number" value="6" step="0.1" />
           </label>
           <label>
-            Inventory days
-            <input id="inventory-days" type="number" value="45" />
+            Admin expense (% of sales)
+            <input id="admin-ratio" type="number" value="4" step="0.1" />
           </label>
           <label>
-            Payable days
-            <input id="payable-days" type="number" value="30" />
+            Selling expense (% of sales)
+            <input id="selling-ratio" type="number" value="3" step="0.1" />
+          </label>
+          <label>
+            Depreciation (% of fixed assets)
+            <input id="depr-ratio" type="number" value="10" step="0.1" />
+          </label>
+          <label>
+            Tax rate (%)
+            <input id="tax-rate" type="number" value="25" step="0.1" />
           </label>
         </div>
       </section>
 
       <section class="card">
-        <h2>3) Credit Inputs</h2>
+        <h2>4) Credit Inputs & Working Capital Assumptions</h2>
         <div class="grid">
           <label>
             Existing Cash Credit limit (₹)
@@ -86,17 +124,34 @@
             Term Loan rate (% p.a.)
             <input id="tl-rate" type="number" value="11" step="0.1" />
           </label>
+          <label>
+            Receivable days
+            <input id="receivable-days" type="number" value="60" />
+          </label>
+          <label>
+            Inventory days
+            <input id="inventory-days" type="number" value="45" />
+          </label>
+          <label>
+            Creditor days
+            <input id="payable-days" type="number" value="30" />
+          </label>
+          <label>
+            Margin contribution (%)
+            <input id="margin-ratio" type="number" value="25" step="0.1" />
+          </label>
         </div>
-        <button id="generate-btn" class="primary" disabled>Generate CMA Report</button>
+        <button id="generate-btn" class="primary" disabled>Generate Full CMA Report</button>
       </section>
 
       <section class="card">
-        <h2>4) Banker-ready Output</h2>
+        <h2>5) Banker-ready Output</h2>
         <div id="output" class="output">
           Upload and select a sheet to generate CMA statements.
         </div>
         <div class="actions">
           <button id="download-report" disabled>Download HTML Report</button>
+          <button id="download-excel" disabled>Download Excel Report</button>
           <button id="download-json" disabled>Download JSON Data</button>
         </div>
       </section>

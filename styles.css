@@ -7,6 +7,7 @@
   --primary-dark: #1e40af;
   --border: #cbd5e1;
   --good: #166534;
+  --header: #dbeafe;
 }
 
 * {
@@ -15,14 +16,14 @@
 
 body {
   margin: 0;
-  font-family: Inter, Segoe UI, Roboto, sans-serif;
+  font-family: "Segoe UI", Inter, Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
 }
 
 .page-header {
   padding: 2rem 1.25rem 1rem;
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
 }
 
@@ -37,7 +38,7 @@ body {
 }
 
 .layout {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: 0 auto;
   display: grid;
   gap: 1rem;
@@ -49,10 +50,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 .card h2 {
   margin-top: 0;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.45rem;
 }
 
 .hint,
@@ -63,7 +67,7 @@ body {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 0.8rem;
 }
 
@@ -82,6 +86,7 @@ button {
   padding: 0.55rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: 8px;
+  background: #fff;
 }
 
 button {
@@ -93,6 +98,7 @@ button {
   background: var(--primary);
   color: #fff;
   border-color: transparent;
+  font-weight: 600;
 }
 
 .primary:hover {
@@ -100,35 +106,12 @@ button {
 }
 
 .output {
-  max-height: 60vh;
+  max-height: 70vh;
   overflow: auto;
-}
-
-.table-wrap {
-  margin-bottom: 1rem;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-th,
-td {
-  border: 1px solid var(--border);
-  padding: 0.45rem;
-  text-align: right;
-}
-
-th:first-child,
-td:first-child {
-  text-align: left;
-  font-weight: 600;
-}
-
-thead {
-  background: #e2e8f0;
+  background: #f8fafc;
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  padding: 0.9rem;
 }
 
 .good {
@@ -139,4 +122,58 @@ thead {
 .actions {
   display: flex;
   gap: 0.6rem;
+  margin-top: 0.7rem;
+}
+
+.cma-report h2 {
+  margin: 0;
+}
+
+.report-header {
+  margin-bottom: 0.7rem;
+}
+
+.report-section {
+  margin-bottom: 1.2rem;
+}
+
+.report-section h3 {
+  margin: 0 0 0.45rem;
+  background: var(--header);
+  border: 1px solid #bfdbfe;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.89rem;
+  background: #fff;
+}
+
+th,
+td {
+  border: 1px solid var(--border);
+  padding: 0.45rem;
+  text-align: right;
+}
+
+th {
+  background: #e2e8f0;
+  white-space: nowrap;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+  font-weight: 600;
+  min-width: 220px;
+}
+
+ol {
+  margin: 0;
+  padding-left: 1.1rem;
+  line-height: 1.45;
 }
