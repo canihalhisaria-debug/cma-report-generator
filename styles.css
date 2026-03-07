@@ -209,3 +209,10 @@ table tbody tr:nth-child(even) {
   background: #eaf2ff;
   font-weight: 700;
 }
+
+.hidden { display: none; }
+
+.status .bad, .bad {
+  color: #b91c1c;
+  font-weight: 700;
+}

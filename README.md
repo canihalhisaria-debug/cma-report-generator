@@ -5,7 +5,7 @@ A static, browser-only CMA Report Generator tailored for CA firms. It reads uplo
 ## Key Features
 
 - **No backend, no binaries**: Pure HTML/CSS/JavaScript app suitable for GitHub Pages.
-- **Excel in browser**: Upload `.xlsx` / `.xls`; parsing is done locally using SheetJS CDN.
+- **Excel in browser**: Upload `.xlsx` / `.xls`; parsing is done locally using SheetJS CDN, including Tally-style two-sided P&L and Balance Sheet layouts.
 - **CMA period modeling**:
   - 3 or 4 historical years
   - 1 provisional year
@@ -13,6 +13,9 @@ A static, browser-only CMA Report Generator tailored for CA firms. It reads uplo
 - **Credit analysis outputs**:
   - Working Capital Assessment with Cash Credit requirement
   - Term Loan repayment and interest projection schedule
+- **Head mapping controls**:
+  - Auto-maps common Tally ledger heads to CMA structure
+  - Shows mapping review when confidence is low (no silent sample fallback)
 - **Export options**:
   - Download banker-ready report as HTML
   - Download generated data as JSON
