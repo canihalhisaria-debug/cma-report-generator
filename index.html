@@ -44,6 +44,24 @@
         <div id="sheet-status" class="status">No workbook uploaded yet.</div>
         <label for="sheet-selector">Select source sheet</label>
         <select id="sheet-selector" disabled></select>
+        <div class="mapping-box">
+          <h3>Financial Head Mapping</h3>
+          <p class="hint">Auto-maps common aliases. Adjust manually if source head names differ.</p>
+          <div class="grid">
+            <label>
+              Trade Receivables (Sundry Debtors)
+              <select id="map-trade-receivables"></select>
+            </label>
+            <label>
+              Inventory (Closing Stock)
+              <select id="map-inventory"></select>
+            </label>
+            <label>
+              Trade Payables (Creditors)
+              <select id="map-trade-payables"></select>
+            </label>
+          </div>
+        </div>
       </section>
 
       <section class="card">
@@ -73,6 +91,13 @@
           <label>
             Annual sales growth (%)
             <input id="sales-growth" type="number" value="10" step="0.1" />
+          </label>
+          <label>
+            Sales projection mode
+            <select id="sales-projection-mode">
+              <option value="growth">Growth percentage</option>
+              <option value="nayak">Based on CC limit (Nayak Committee)</option>
+            </select>
           </label>
           <label>
             Other income (% of sales)
