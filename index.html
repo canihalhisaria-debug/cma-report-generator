@@ -3,106 +3,82 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CMA Report Generator | CA Firm Edition</title>
+    <title>Banker-Grade CMA Dashboard</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
-    <header class="page-header">
-      <h1>CMA Report Generator</h1>
-      <p>Banker-grade, browser-only CMA preparation tool for Chartered Accountants.</p>
+    <header>
+      <h1>Banker-Grade CMA Software Dashboard</h1>
+      <p>Enter actual current-year figures and generate projected CMA statements with formula trace.</p>
     </header>
 
-    <main class="layout">
+    <main>
       <section class="card">
-        <h2>1) Borrower / Proposal Summary</h2>
+        <h2>Dashboard Controls</h2>
         <div class="grid">
-          <label>Borrower Name <input id="borrower-name" type="text" value="ABC Industries Pvt Ltd" /></label>
-          <label>Constitution <input id="constitution" type="text" value="Private Limited Company" /></label>
-          <label>PAN <input id="pan" type="text" value="ABCDE1234F" /></label>
-          <label>GSTIN <input id="gstin" type="text" value="27ABCDE1234F1Z5" /></label>
-          <label>Bank <input id="bank-name" type="text" value="State Bank of India" /></label>
-          <label>Branch <input id="branch-name" type="text" value="Andheri Branch" /></label>
-          <label>Facility Type <input id="facility-type" type="text" value="Cash Credit + Term Loan" /></label>
-          <label>Prepared Date <input id="prepared-date" type="date" /></label>
-          <label>Existing Limit (₹) <input id="existing-limit" type="number" value="5000000" /></label>
-          <label>Proposed Limit (₹) <input id="proposed-limit" type="number" value="8000000" /></label>
+          <label>Actual Year Label <input id="actual-year" value="FY 2024-25" /></label>
+          <label>Projection Years <input id="projection-years" type="number" min="1" max="10" value="5" /></label>
+          <label>Domestic Sale Growth % <input id="g-domestic" type="number" value="12" step="0.1" /></label>
+          <label>Export Sale Growth % <input id="g-export" type="number" value="10" step="0.1" /></label>
+          <label>Other Income Growth % <input id="g-other-income" type="number" value="8" step="0.1" /></label>
+          <label>Purchase / Material Cost Growth % <input id="g-material" type="number" value="9" step="0.1" /></label>
+          <label>Operating Expense Growth % <input id="g-opex" type="number" value="8" step="0.1" /></label>
+          <label>Debtor Days <input id="debtor-days" type="number" value="60" /></label>
+          <label>Creditor Days <input id="creditor-days" type="number" value="45" /></label>
+          <label>Inventory Holding Days <input id="inventory-days" type="number" value="50" /></label>
+          <label>Interest Rate on CC % <input id="rate-cc" type="number" value="11" step="0.1" /></label>
+          <label>Interest Rate on TL % <input id="rate-tl" type="number" value="10.5" step="0.1" /></label>
+          <label>Tax Rate % <input id="tax-rate" type="number" value="25" step="0.1" /></label>
         </div>
       </section>
 
       <section class="card">
-        <h2>2) Upload Client Workbook</h2>
-        <p class="hint">Upload Tally style Balance Sheet + Profit & Loss workbook (.xlsx/.xls). No sample-data fallback is used.</p>
-        <input type="file" id="excel-file" accept=".xlsx,.xls" />
-        <div id="sheet-status" class="status">No workbook uploaded yet.</div>
-
-        <div id="mapping-review" class="mapping-box hidden">
-          <h3>Financial Head Mapping Review</h3>
-          <p class="hint">Low confidence mapping found. You can still generate the report with current mapping and fallbacks.</p>
-          <div id="mapping-grid" class="grid"></div>
-        </div>
-
-        <div id="mapping-warning-panel" class="mapping-warning hidden"></div>
-      </section>
-
-      <section class="card">
-        <h2>3) Projection & P&L Assumptions</h2>
-        <label><input id="historical-lock-mode" type="checkbox" checked /> Historical Lock Mode (freeze uploaded historical values; assumptions start from projected years only)</label>
+        <h2>Actual Year Input (Locked for Projection)</h2>
         <div class="grid">
-          <label>Projection years (FY1-FYn) <input id="projection-years-cc" type="number" min="1" max="7" value="5" /></label>
-          <label>Sales growth (%) <input id="sales-growth" type="number" value="10" step="0.1" /></label>
-          <label>Other income (% of sales) <input id="other-income-ratio" type="number" value="1.5" step="0.1" /></label>
-          <label>Gross margin (%) <input id="gross-margin" type="number" value="28" step="0.1" /></label>
-          <label>Employee cost (% of sales) <input id="employee-ratio" type="number" value="6" step="0.1" /></label>
-          <label>Administrative expense (% of sales) <input id="admin-ratio" type="number" value="4" step="0.1" /></label>
-          <label>Selling expense (% of sales) <input id="selling-ratio" type="number" value="3" step="0.1" /></label>
-          <label>Depreciation (% of fixed assets) <input id="depr-ratio" type="number" value="10" step="0.1" /></label>
-          <label>Tax rate (%) <input id="tax-rate" type="number" value="25" step="0.1" /></label>
-        </div>
-      </section>
+          <label>Domestic Sale <input id="in-domestic-sale" type="number" value="150000000" /></label>
+          <label>Export Sale <input id="in-export-sale" type="number" value="30000000" /></label>
+          <label>Other Operating Income <input id="in-other-operating-income" type="number" value="2000000" /></label>
+          <label>Non Operating Income <input id="in-non-operating-income" type="number" value="1000000" /></label>
+          <label>Opening Stock <input id="in-opening-stock" type="number" value="20000000" /></label>
+          <label>Purchases <input id="in-purchases" type="number" value="100000000" /></label>
+          <label>Carriage Outward <input id="in-carriage-outward" type="number" value="1500000" /></label>
+          <label>Unloading Expenses <input id="in-unloading-expenses" type="number" value="700000" /></label>
+          <label>Direct Expenses <input id="in-direct-expenses" type="number" value="1800000" /></label>
+          <label>Closing Stock <input id="in-closing-stock" type="number" value="22000000" /></label>
+          <label>Salary &amp; Wages <input id="in-salary-wages" type="number" value="9000000" /></label>
+          <label>Power &amp; Fuel <input id="in-power-fuel" type="number" value="3200000" /></label>
+          <label>Rent Expenses <input id="in-rent-expenses" type="number" value="1800000" /></label>
+          <label>Printing &amp; Stationery <input id="in-printing-stationery" type="number" value="450000" /></label>
+          <label>Depreciation <input id="in-depreciation" type="number" value="2500000" /></label>
+          <label>Other Expenditure <input id="in-other-expenditure" type="number" value="1400000" /></label>
+          <label>Repayment of Term Loan <input id="in-tl-repayment" type="number" value="3000000" /></label>
+          <label>Income Tax (optional override) <input id="in-income-tax" type="number" value="0" /></label>
 
-      <section class="card">
-        <h2>4) Working Capital & Limit Inputs</h2>
-        <div class="grid">
-          <label>Existing CC Limit (₹) <input id="cc-limit" type="number" value="5000000" /></label>
-          <label>Proposed CC Limit (₹, optional) <input id="proposed-cc-limit" type="number" value="0" /></label>
-          <label>Working capital method
-            <select id="wc-method">
-              <option value="max" selected>Higher of Nayak & WC Cycle</option>
-              <option value="nayak">Nayak Committee</option>
-              <option value="cycle">Working Capital Cycle</option>
-            </select>
-          </label>
-          <label>Receivable days <input id="receivable-days" type="number" value="60" /></label>
-          <label>Inventory days <input id="inventory-days" type="number" value="45" /></label>
-          <label>Creditor days <input id="payable-days" type="number" value="30" /></label>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>5) Term Loan Inputs</h2>
-        <div class="grid">
-          <label>Term Loan Amount (₹) <input id="tl-amount" type="number" value="12000000" /></label>
-          <label>Interest Rate (% p.a.) <input id="tl-rate" type="number" value="11" step="0.1" /></label>
-          <label>Repayment years <input id="tl-years" type="number" min="1" max="15" value="6" /></label>
-          <label>Moratorium (years) <input id="moratorium-years" type="number" min="0" max="5" value="1" /></label>
+          <label>Gross Fixed Assets <input id="bs-gross-fixed-assets" type="number" value="35000000" /></label>
+          <label>Accumulated Depreciation <input id="bs-accumulated-depreciation" type="number" value="12000000" /></label>
+          <label>Sundry Debtors <input id="bs-sundry-debtors" type="number" value="28000000" /></label>
+          <label>Cash &amp; Bank <input id="bs-cash-bank" type="number" value="6000000" /></label>
+          <label>Other Current Assets <input id="bs-other-current-assets" type="number" value="2000000" /></label>
+          <label>Loans &amp; Advances <input id="bs-loans-advances" type="number" value="3500000" /></label>
+          <label>Capital <input id="bs-capital" type="number" value="25000000" /></label>
+          <label>Reserves &amp; Surplus <input id="bs-reserves-surplus" type="number" value="16000000" /></label>
+          <label>Term Loan <input id="bs-term-loan" type="number" value="15000000" /></label>
+          <label>Bank CC / OD <input id="bs-bank-cc-od" type="number" value="10000000" /></label>
+          <label>Sundry Creditors <input id="bs-sundry-creditors" type="number" value="14000000" /></label>
+          <label>Other Current Liabilities <input id="bs-other-current-liabilities" type="number" value="3000000" /></label>
+          <label>Statutory Liabilities <input id="bs-statutory-liabilities" type="number" value="2000000" /></label>
         </div>
         <div class="actions">
-          <button id="generate-btn" class="primary" disabled>Generate Banker-Grade CMA</button>
-          <button id="generate-current-btn" disabled>Generate with Current Mapping</button>
+          <button id="run" class="primary">Generate CMA</button>
+          <button id="download">Download Excel (All Output Sheets)</button>
         </div>
       </section>
 
       <section class="card">
-        <h2>6) Output</h2>
-        <div id="output" class="output">Upload workbook to parse Profit & Loss and Balance Sheet.</div>
-        <div class="actions">
-          <button id="download-report" disabled>Download HTML Report</button>
-          <button id="download-excel" disabled>Download Excel Report</button>
-          <button id="download-json" disabled>Download JSON Data</button>
-          <button id="download-trace" disabled>Download Historical Trace</button>
-        </div>
+        <h2>Generated Statements</h2>
+        <div id="output"></div>
       </section>
     </main>
   </body>
