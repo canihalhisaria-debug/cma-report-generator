@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CMA Report Generator | CA Firm Edition</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>CMA Report Generator</h1>
+      <p>
+        Browser-only CMA preparation for CA firms. Upload Excel, map periods,
+        project Cash Credit and Term Loan limits, and generate banker-ready
+        outputs.
+      </p>
+    </header>
+
+    <main class="layout">
+      <section class="card">
+        <h2>1) Upload Client Workbook</h2>
+        <p class="hint">
+          Supports .xlsx / .xls files. Data is processed in your browser only.
+        </p>
+        <input type="file" id="excel-file" accept=".xlsx,.xls" />
+        <div id="sheet-status" class="status">No workbook uploaded yet.</div>
+        <label for="sheet-selector">Select source sheet</label>
+        <select id="sheet-selector" disabled></select>
+      </section>
+
+      <section class="card">
+        <h2>2) Configure Periods</h2>
+        <div class="grid">
+          <label>
+            Historical years (3 or 4)
+            <select id="historical-count">
+              <option value="3">3</option>
+              <option value="4" selected>4</option>
+            </select>
+          </label>
+          <label>
+            Projection repayment years
+            <input id="projection-years" type="number" min="1" max="10" value="5" />
+          </label>
+          <label>
+            Annual sales growth (%)
+            <input id="sales-growth" type="number" value="10" step="0.1" />
+          </label>
+          <label>
+            Gross margin (%)
+            <input id="gross-margin" type="number" value="28" step="0.1" />
+          </label>
+          <label>
+            Receivable days
+            <input id="receivable-days" type="number" value="60" />
+          </label>
+          <label>
+            Inventory days
+            <input id="inventory-days" type="number" value="45" />
+          </label>
+          <label>
+            Payable days
+            <input id="payable-days" type="number" value="30" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3) Credit Inputs</h2>
+        <div class="grid">
+          <label>
+            Existing Cash Credit limit (₹)
+            <input id="cc-limit" type="number" value="5000000" />
+          </label>
+          <label>
+            Cash Credit utilization (%)
+            <input id="cc-utilization" type="number" value="85" step="0.1" />
+          </label>
+          <label>
+            Existing Term Loan outstanding (₹)
+            <input id="tl-outstanding" type="number" value="12000000" />
+          </label>
+          <label>
+            Term Loan rate (% p.a.)
+            <input id="tl-rate" type="number" value="11" step="0.1" />
+          </label>
+        </div>
+        <button id="generate-btn" class="primary" disabled>Generate CMA Report</button>
+      </section>
+
+      <section class="card">
+        <h2>4) Banker-ready Output</h2>
+        <div id="output" class="output">
+          Upload and select a sheet to generate CMA statements.
+        </div>
+        <div class="actions">
+          <button id="download-report" disabled>Download HTML Report</button>
+          <button id="download-json" disabled>Download JSON Data</button>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
