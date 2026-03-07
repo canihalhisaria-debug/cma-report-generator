@@ -11,7 +11,7 @@
   <body>
     <header class="page-header">
       <h1>CMA Report Generator</h1>
-      <p>Browser-only CMA preparation for CA firms from uploaded Tally-style final account workbooks.</p>
+      <p>Banker-grade, browser-only CMA preparation tool for Chartered Accountants.</p>
     </header>
 
     <main class="layout">
@@ -24,52 +24,35 @@
           <label>GSTIN <input id="gstin" type="text" value="27ABCDE1234F1Z5" /></label>
           <label>Bank <input id="bank-name" type="text" value="State Bank of India" /></label>
           <label>Branch <input id="branch-name" type="text" value="Andheri Branch" /></label>
+          <label>Facility Type <input id="facility-type" type="text" value="Cash Credit + Term Loan" /></label>
+          <label>Prepared Date <input id="prepared-date" type="date" /></label>
           <label>Existing Limit (₹) <input id="existing-limit" type="number" value="5000000" /></label>
           <label>Proposed Limit (₹) <input id="proposed-limit" type="number" value="8000000" /></label>
-          <label>Facility Type <input id="facility-type" type="text" value="Cash Credit + Term Loan" /></label>
-          <label>CMA Prepared Date <input id="prepared-date" type="date" /></label>
         </div>
       </section>
 
       <section class="card">
         <h2>2) Upload Client Workbook</h2>
-        <p class="hint">Supports .xlsx / .xls. Parsing is in-browser only.</p>
+        <p class="hint">Upload Tally style Balance Sheet + Profit & Loss workbook (.xlsx/.xls). No sample-data fallback is used.</p>
         <input type="file" id="excel-file" accept=".xlsx,.xls" />
         <div id="sheet-status" class="status">No workbook uploaded yet.</div>
 
         <div id="mapping-review" class="mapping-box hidden">
-          <h3>Upload Mapping Review</h3>
-          <p class="hint">Some heads are not confidently mapped. Confirm/adjust these mappings before generating.</p>
+          <h3>Financial Head Mapping Review</h3>
+          <p class="hint">Low confidence mapping found. Validate mappings before generating the CMA report.</p>
           <div id="mapping-grid" class="grid"></div>
         </div>
       </section>
 
       <section class="card">
-        <h2>3) CMA Period & Projection Settings</h2>
+        <h2>3) Projection & P&L Assumptions</h2>
         <div class="grid">
-          <label>
-            Historical years
-            <select id="historical-count">
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3" selected>3</option>
-              <option value="4">4</option>
-            </select>
-          </label>
-          <label>Projected years for Cash Credit <input id="projection-years-cc" type="number" min="1" max="10" value="5" /></label>
-          <label>Term loan repayment period (years) <input id="projection-years-tl" type="number" min="1" max="15" value="6" /></label>
-          <label>Moratorium (years) <input id="moratorium-years" type="number" min="0" max="5" value="1" /></label>
-          <label>Annual sales growth (%) <input id="sales-growth" type="number" value="10" step="0.1" /></label>
-          <label>Sales projection mode
-            <select id="sales-projection-mode">
-              <option value="growth">Growth percentage</option>
-              <option value="nayak">Based on CC limit (Nayak Committee)</option>
-            </select>
-          </label>
+          <label>Projection years (FY1-FYn) <input id="projection-years-cc" type="number" min="1" max="7" value="5" /></label>
+          <label>Sales growth (%) <input id="sales-growth" type="number" value="10" step="0.1" /></label>
           <label>Other income (% of sales) <input id="other-income-ratio" type="number" value="1.5" step="0.1" /></label>
           <label>Gross margin (%) <input id="gross-margin" type="number" value="28" step="0.1" /></label>
           <label>Employee cost (% of sales) <input id="employee-ratio" type="number" value="6" step="0.1" /></label>
-          <label>Admin expense (% of sales) <input id="admin-ratio" type="number" value="4" step="0.1" /></label>
+          <label>Administrative expense (% of sales) <input id="admin-ratio" type="number" value="4" step="0.1" /></label>
           <label>Selling expense (% of sales) <input id="selling-ratio" type="number" value="3" step="0.1" /></label>
           <label>Depreciation (% of fixed assets) <input id="depr-ratio" type="number" value="10" step="0.1" /></label>
           <label>Tax rate (%) <input id="tax-rate" type="number" value="25" step="0.1" /></label>
@@ -77,22 +60,36 @@
       </section>
 
       <section class="card">
-        <h2>4) Credit Inputs & Working Capital Assumptions</h2>
+        <h2>4) Working Capital & Limit Inputs</h2>
         <div class="grid">
-          <label>Existing Cash Credit limit (₹) <input id="cc-limit" type="number" value="5000000" /></label>
-          <label>Cash Credit utilization (%) <input id="cc-utilization" type="number" value="85" step="0.1" /></label>
-          <label>Existing Term Loan outstanding (₹) <input id="tl-outstanding" type="number" value="12000000" /></label>
-          <label>Term Loan rate (% p.a.) <input id="tl-rate" type="number" value="11" step="0.1" /></label>
+          <label>Existing CC Limit (₹) <input id="cc-limit" type="number" value="5000000" /></label>
+          <label>Proposed CC Limit (₹, optional) <input id="proposed-cc-limit" type="number" value="0" /></label>
+          <label>Working capital method
+            <select id="wc-method">
+              <option value="max" selected>Higher of Nayak & WC Cycle</option>
+              <option value="nayak">Nayak Committee</option>
+              <option value="cycle">Working Capital Cycle</option>
+            </select>
+          </label>
           <label>Receivable days <input id="receivable-days" type="number" value="60" /></label>
           <label>Inventory days <input id="inventory-days" type="number" value="45" /></label>
           <label>Creditor days <input id="payable-days" type="number" value="30" /></label>
-          <label>Margin contribution (%) <input id="margin-ratio" type="number" value="25" step="0.1" /></label>
         </div>
-        <button id="generate-btn" class="primary" disabled>Generate Full CMA Report</button>
       </section>
 
       <section class="card">
-        <h2>5) Banker-ready Output</h2>
+        <h2>5) Term Loan Inputs</h2>
+        <div class="grid">
+          <label>Term Loan Amount (₹) <input id="tl-amount" type="number" value="12000000" /></label>
+          <label>Interest Rate (% p.a.) <input id="tl-rate" type="number" value="11" step="0.1" /></label>
+          <label>Repayment years <input id="tl-years" type="number" min="1" max="15" value="6" /></label>
+          <label>Moratorium (years) <input id="moratorium-years" type="number" min="0" max="5" value="1" /></label>
+        </div>
+        <button id="generate-btn" class="primary" disabled>Generate Banker-Grade CMA</button>
+      </section>
+
+      <section class="card">
+        <h2>6) Output</h2>
         <div id="output" class="output">Upload workbook to parse Profit & Loss and Balance Sheet.</div>
         <div class="actions">
           <button id="download-report" disabled>Download HTML Report</button>
