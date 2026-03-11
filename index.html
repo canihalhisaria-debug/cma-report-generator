@@ -11,7 +11,7 @@
   <body>
     <header>
       <h1>Banker-Grade CMA Software Dashboard</h1>
-      <p>Enter actual current-year figures and generate projected CMA statements with formula trace.</p>
+      <p>Only two manual inputs are required: CC Amount and ROI. Everything else auto-calculates.</p>
     </header>
 
     <main>
@@ -19,65 +19,18 @@
         <h2>Dashboard Controls</h2>
         <div class="grid">
           <label>Actual Year Label <input id="actual-year" value="FY 2024-25" /></label>
-          <label>Projection Years <input id="projection-years" type="number" min="1" max="10" value="5" /></label>
-          <label>Domestic Sale Growth % <input id="g-domestic" type="number" value="12" step="0.1" /></label>
-          <label>Export Sale Growth % <input id="g-export" type="number" value="10" step="0.1" /></label>
-          <label>Other Income Growth % <input id="g-other-income" type="number" value="8" step="0.1" /></label>
-          <label>Purchase / Material Cost Growth % <input id="g-material" type="number" value="9" step="0.1" /></label>
-          <label>Operating Expense Growth % <input id="g-opex" type="number" value="8" step="0.1" /></label>
-          <label>Debtor Days <input id="debtor-days" type="number" value="60" /></label>
-          <label>Creditor Days <input id="creditor-days" type="number" value="45" /></label>
-          <label>Inventory Holding Days <input id="inventory-days" type="number" value="50" /></label>
-          <label>Interest Rate on CC % <input id="rate-cc" type="number" value="11" step="0.1" /></label>
-          <label>Interest Rate on TL % <input id="rate-tl" type="number" value="10.5" step="0.1" /></label>
-          <label>Tax Rate % <input id="tax-rate" type="number" value="25" step="0.1" /></label>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Actual Year Input (Locked for Projection)</h2>
-        <div class="grid">
-          <label>Domestic Sale <input id="in-domestic-sale" type="number" value="150000000" /></label>
-          <label>Export Sale <input id="in-export-sale" type="number" value="30000000" /></label>
-          <label>Other Operating Income <input id="in-other-operating-income" type="number" value="2000000" /></label>
-          <label>Non Operating Income <input id="in-non-operating-income" type="number" value="1000000" /></label>
-          <label>Opening Stock <input id="in-opening-stock" type="number" value="20000000" /></label>
-          <label>Purchases <input id="in-purchases" type="number" value="100000000" /></label>
-          <label>Carriage Outward <input id="in-carriage-outward" type="number" value="1500000" /></label>
-          <label>Unloading Expenses <input id="in-unloading-expenses" type="number" value="700000" /></label>
-          <label>Direct Expenses <input id="in-direct-expenses" type="number" value="1800000" /></label>
-          <label>Closing Stock <input id="in-closing-stock" type="number" value="22000000" /></label>
-          <label>Salary &amp; Wages <input id="in-salary-wages" type="number" value="9000000" /></label>
-          <label>Power &amp; Fuel <input id="in-power-fuel" type="number" value="3200000" /></label>
-          <label>Rent Expenses <input id="in-rent-expenses" type="number" value="1800000" /></label>
-          <label>Printing &amp; Stationery <input id="in-printing-stationery" type="number" value="450000" /></label>
-          <label>Depreciation <input id="in-depreciation" type="number" value="2500000" /></label>
-          <label>Other Expenditure <input id="in-other-expenditure" type="number" value="1400000" /></label>
-          <label>Repayment of Term Loan <input id="in-tl-repayment" type="number" value="3000000" /></label>
-          <label>Income Tax (optional override) <input id="in-income-tax" type="number" value="0" /></label>
-
-          <label>Gross Fixed Assets <input id="bs-gross-fixed-assets" type="number" value="35000000" /></label>
-          <label>Accumulated Depreciation <input id="bs-accumulated-depreciation" type="number" value="12000000" /></label>
-          <label>Sundry Debtors <input id="bs-sundry-debtors" type="number" value="28000000" /></label>
-          <label>Cash &amp; Bank <input id="bs-cash-bank" type="number" value="6000000" /></label>
-          <label>Other Current Assets <input id="bs-other-current-assets" type="number" value="2000000" /></label>
-          <label>Loans &amp; Advances <input id="bs-loans-advances" type="number" value="3500000" /></label>
-          <label>Capital <input id="bs-capital" type="number" value="25000000" /></label>
-          <label>Reserves &amp; Surplus <input id="bs-reserves-surplus" type="number" value="16000000" /></label>
-          <label>Term Loan <input id="bs-term-loan" type="number" value="15000000" /></label>
-          <label>Bank CC / OD <input id="bs-bank-cc-od" type="number" value="10000000" /></label>
-          <label>Sundry Creditors <input id="bs-sundry-creditors" type="number" value="14000000" /></label>
-          <label>Other Current Liabilities <input id="bs-other-current-liabilities" type="number" value="3000000" /></label>
-          <label>Statutory Liabilities <input id="bs-statutory-liabilities" type="number" value="2000000" /></label>
+          <label>Projection Years <input id="projection-years" type="number" min="2" max="10" value="5" /></label>
+          <label>CC Amount <input id="cc-amount" type="number" value="10000000" /></label>
+          <label>ROI (%) <input id="roi" type="number" value="11" step="0.1" /></label>
         </div>
         <div class="actions">
           <button id="run" class="primary">Generate CMA</button>
-          <button id="download">Download Excel (All Output Sheets)</button>
+          <button id="download">Download Fixed Workbook</button>
         </div>
       </section>
 
       <section class="card">
-        <h2>Generated Statements</h2>
+        <h2>Generated Statements (Auto Projection)</h2>
         <div id="output"></div>
       </section>
     </main>
