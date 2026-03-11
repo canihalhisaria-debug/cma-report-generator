@@ -1,43 +1,37 @@
-# Banker-Grade CMA Dashboard
+# CMA Report Generator (2-Input Version)
 
-Static browser app for Credit Monitoring Arrangement (CMA) projection with a structured banker-grade dashboard.
+This project now uses **only two user inputs**:
 
-## What this build includes
+- **CC Amount**
+- **ROI (%)**
 
-- **Dashboard input sheet behavior**: actual current-year values are entered and treated as locked baseline.
-- **Projection controls**:
-  - Domestic Sale Growth %
-  - Export Sale Growth %
-  - Other Income Growth %
-  - Purchase / Material Cost Growth %
-  - Operating Expense Growth %
-  - Debtor Days
-  - Creditor Days
-  - Inventory Holding Days
-  - Interest Rate on CC
-  - Interest Rate on TL
-  - Tax Rate
-- **Auto-generation output statements**:
-  - Profit & Loss
-  - Balance Sheet
-  - Working Capital
-  - Ratios
-  - DSCR
-  - Validation
-- **Formula trace** is visible in the generated tables for key calculated heads.
-- **Excel export** with required output sheets:
-  - Dashboard
-  - Profit & Loss
-  - Balance Sheet
-  - Working Capital
-  - Ratios
-  - DSCR
-  - Validation
+All major CMA outputs are auto-calculated:
 
-## Run
+- Sales
+- Interest
+- Stock
+- Debtors
+- Creditors
+- Projected P&L
+- Projected Balance Sheet
+- Working Capital Analysis
+- Financial Ratios
+
+Also enforced:
+
+- **First year closing stock = second year opening stock**.
+- New workbook is generated as `FINAL_CMA_REPORT_FINAL_FIXED.xlsx` (original is not overwritten).
+
+## Web app run
 
 ```bash
 python3 -m http.server 4173
 ```
 
 Open `http://localhost:4173`.
+
+## Script run
+
+```bash
+python3 cma_fix.py --cc-amount 10000000 --roi 11
+```

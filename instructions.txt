@@ -1,0 +1,21 @@
+Run this to generate a new fixed workbook (without overwriting original):
+
+python3 cma_fix.py --cc-amount 10000000 --roi 11
+
+Only these two inputs are required:
+1) CC Amount
+2) ROI
+
+Auto-calculated:
+- Sales
+- Interest
+- Stock
+- Debtors
+- Creditors
+- Projected P&L
+- Projected Balance Sheet
+- Working Capital Analysis
+- Financial Ratios
+
+Stock logic applied:
+- Year 1 closing stock = Year 2 opening stock
