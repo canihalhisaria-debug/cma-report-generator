@@ -115,7 +115,17 @@ class CMAEngine:
         carriage = [p * 0.008 for p in purchases]
         commission_purchase = [p * 0.0 for p in purchases]
         brokerage_purchase = [p * 0.0 for p in purchases]
-        total_cogs = [s * (1 - a["gp_ratio"]) for s in sales]
+        total_cogs = [
+            p + c + cp + bp + os - cs
+            for p, c, cp, bp, os, cs in zip(
+                purchases,
+                carriage,
+                commission_purchase,
+                brokerage_purchase,
+                opening_stock,
+                closing_stock,
+            )
+        ]
 
         op_base = [s * 0.18 * a["expense_load"] for s in sales]
         min_op_margin = max(0.08, pct(self.p.roi) + 0.03)
