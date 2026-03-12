@@ -14,6 +14,48 @@ function pct(v) {
   return `${Number(v || 0).toFixed(2)}%`;
 }
 
+function buildDepreciationSchedule(projectionYears) {
+  const categories = [
+    { key: "land", label: "Land & Site Development", initialAddition: 0 },
+    { key: "building", label: "Building", initialAddition: 0 },
+    { key: "plant", label: "Plant & Machinery", initialAddition: 0 },
+    { key: "electrical", label: "Electrical Installation", initialAddition: 24685 },
+    { key: "furniture", label: "Furniture & Fixtures", initialAddition: 82175 },
+    { key: "office", label: "Office Equipment", initialAddition: 21240 },
+    { key: "computer", label: "Computer / Laptop", initialAddition: 57920 },
+    { key: "printer", label: "Printer / Scanner", initialAddition: 16430 },
+    { key: "vehicle", label: "Vehicle", initialAddition: 0 },
+    { key: "generator", label: "Generator / UPS", initialAddition: 0 },
+    { key: "other", label: "Other Fixed Assets", initialAddition: 0 },
+  ];
+  const depreciationRate = 0.15;
+  const years = [];
+  const openingByCategory = Object.fromEntries(categories.map((c) => [c.key, 0]));
+
+  for (let i = 0; i < projectionYears; i += 1) {
+    const additionsByCategory = Object.fromEntries(categories.map((c) => [c.key, i === 0 ? c.initialAddition : 0]));
+    const totalByCategory = Object.fromEntries(categories.map((c) => [c.key, openingByCategory[c.key] + additionsByCategory[c.key]]));
+    const depreciationByCategory = Object.fromEntries(categories.map((c) => [c.key, totalByCategory[c.key] * depreciationRate]));
+    const closingByCategory = Object.fromEntries(categories.map((c) => [c.key, totalByCategory[c.key] - depreciationByCategory[c.key]]));
+    const calcTotal = (source) => categories.reduce((sum, c) => sum + source[c.key], 0);
+
+    years.push({
+      label: `FY-${i + 1}`,
+      opening: { ...openingByCategory, total: calcTotal(openingByCategory) },
+      additions: { ...additionsByCategory, total: calcTotal(additionsByCategory) },
+      total: { ...totalByCategory, total: calcTotal(totalByCategory) },
+      depreciation: { ...depreciationByCategory, total: calcTotal(depreciationByCategory) },
+      closing: { ...closingByCategory, total: calcTotal(closingByCategory) },
+    });
+
+    categories.forEach((c) => {
+      openingByCategory[c.key] = closingByCategory[c.key];
+    });
+  }
+
+  return { categories, years };
+}
+
 function buildModel() {
   const ccBase = num("cc-amount");
   const roi = num("roi");
@@ -165,6 +207,7 @@ function buildModel() {
 
 function render(data) {
   const periods = data.map((d) => d.year);
+  const depreciationSchedule = buildDepreciationSchedule(periods.length);
   const formatValue = (value, kind = "money") => {
     if (kind === "pct") return pct(value);
     if (kind === "num") return Number(value || 0).toFixed(2);
@@ -355,17 +398,68 @@ function render(data) {
     </table>
   `;
 
+  const depreciationRows = depreciationSchedule.years
+    .map((year) => {
+      const rowValues = (record) => depreciationSchedule.categories.map((c) => `<td>${money(record[c.key])}</td>`).join("");
+      return `
+        <tr>
+          <td rowspan="5" class="dep-year">${year.label}</td>
+          <td>Opening WDV</td>
+          ${rowValues(year.opening)}
+          <td>${money(year.opening.total)}</td>
+        </tr>
+        <tr>
+          <td>Additions</td>
+          ${rowValues(year.additions)}
+          <td>${money(year.additions.total)}</td>
+        </tr>
+        <tr class="dep-total-row">
+          <td>Total</td>
+          ${rowValues(year.total)}
+          <td>${money(year.total.total)}</td>
+        </tr>
+        <tr>
+          <td>Depreciation</td>
+          ${rowValues(year.depreciation)}
+          <td>${money(year.depreciation.total)}</td>
+        </tr>
+        <tr>
+          <td>Closing WDV</td>
+          ${rowValues(year.closing)}
+          <td>${money(year.closing.total)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  const depreciationTable = `
+    <h3>Depreciation Schedule - Print Format</h3>
+    <table class="projected-pl depreciation-schedule">
+      <thead>
+        <tr>
+          <th>Year</th>
+          <th>Particulars</th>
+          ${depreciationSchedule.categories.map((c) => `<th>${c.label}</th>`).join("")}
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>${depreciationRows}</tbody>
+    </table>
+  `;
+
   const fyHeaders = periods.map((_, i) => `FY ${i + 1}`);
 
   document.getElementById("output").innerHTML =
     table("Projected PL", projectedPlBody, "Particulars", "projected-pl", fyHeaders) +
     table("Projected BS", bsRows, "Particulars", "projected-pl", fyHeaders) +
-    ratioTable;
+    ratioTable +
+    depreciationTable;
 }
 
 function buildWorkbook(data) {
   const wb = XLSX.utils.book_new();
   const years = data.map((_, i) => `FY ${i + 1}`);
+  const depreciationSchedule = buildDepreciationSchedule(years.length);
   const blank = () => data.map(() => 0);
 
   const plRows = [
@@ -499,12 +593,29 @@ function buildWorkbook(data) {
 
   const plSheet = XLSX.utils.aoa_to_sheet([["PROJECTED PL"], ["Particulars", ...years], ...plRows]);
   const bsSheet = XLSX.utils.aoa_to_sheet([["PROJECTED BS"], ["Particulars", ...years], ...bsRows]);
+  const depreciationRows = [];
+
+  depreciationSchedule.years.forEach((year) => {
+    depreciationRows.push([year.label, "Opening WDV", ...depreciationSchedule.categories.map((c) => year.opening[c.key]), year.opening.total]);
+    depreciationRows.push(["", "Additions", ...depreciationSchedule.categories.map((c) => year.additions[c.key]), year.additions.total]);
+    depreciationRows.push(["", "Total", ...depreciationSchedule.categories.map((c) => year.total[c.key]), year.total.total]);
+    depreciationRows.push(["", "Depreciation", ...depreciationSchedule.categories.map((c) => year.depreciation[c.key]), year.depreciation.total]);
+    depreciationRows.push(["", "Closing WDV", ...depreciationSchedule.categories.map((c) => year.closing[c.key]), year.closing.total]);
+  });
+
+  const depreciationSheet = XLSX.utils.aoa_to_sheet([
+    ["DEPRECIATION SCHEDULE - PRINT FORMAT"],
+    ["Year", "Particulars", ...depreciationSchedule.categories.map((c) => c.label), "Total"],
+    ...depreciationRows,
+  ]);
 
   plSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
   bsSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
+  depreciationSheet["!cols"] = [{ wch: 12 }, { wch: 18 }, ...depreciationSchedule.categories.map(() => ({ wch: 18 })), { wch: 14 }];
 
   XLSX.utils.book_append_sheet(wb, plSheet, "Projected PL");
   XLSX.utils.book_append_sheet(wb, bsSheet, "Projected BS");
+  XLSX.utils.book_append_sheet(wb, depreciationSheet, "Depreciation Schedule");
 
   return wb;
 }
