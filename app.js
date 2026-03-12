@@ -435,6 +435,63 @@ function buildWorkbook(data) {
   return wb;
 }
 
+async function downloadDisplayPdf() {
+  const output = document.getElementById("output");
+  if (!output || !window.html2canvas || !window.jspdf) {
+    alert("PDF library load nahi hui. Please page refresh karke dobara try karein.");
+    return;
+  }
+
+  const originalOverflow = output.style.overflow;
+  const originalMaxHeight = output.style.maxHeight;
+  output.style.overflow = "visible";
+  output.style.maxHeight = "none";
+
+  try {
+    const canvas = await window.html2canvas(output, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      windowWidth: output.scrollWidth,
+      windowHeight: output.scrollHeight,
+    });
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF("p", "pt", "a4");
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 24;
+    const usableWidth = pageWidth - margin * 2;
+    const usableHeight = pageHeight - margin * 2;
+
+    const imgWidth = usableWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let heightLeft = imgHeight;
+    let positionY = margin;
+
+    const imageData = canvas.toDataURL("image/png");
+    pdf.addImage(imageData, "PNG", margin, positionY, imgWidth, imgHeight);
+    heightLeft -= usableHeight;
+
+    while (heightLeft > 0) {
+      positionY = margin - (imgHeight - heightLeft);
+      pdf.addPage();
+      pdf.addImage(imageData, "PNG", margin, positionY, imgWidth, imgHeight);
+      heightLeft -= usableHeight;
+    }
+
+    pdf.save("CMA_Display_Match_PL_BS.pdf");
+  } catch (error) {
+    console.error(error);
+    alert("Download failed. Please try again.");
+  } finally {
+    output.style.overflow = originalOverflow;
+    output.style.maxHeight = originalMaxHeight;
+  }
+}
+
 let model = [];
 function run() {
   model = buildModel();
@@ -442,9 +499,9 @@ function run() {
 }
 
 document.getElementById("run").addEventListener("click", run);
-document.getElementById("download").addEventListener("click", () => {
+document.getElementById("download").addEventListener("click", async () => {
   if (!model.length) run();
-  XLSX.writeFile(buildWorkbook(model), "FINAL_CMA_REPORT_FINAL_FIXED.xlsx");
+  await downloadDisplayPdf();
 });
 
 INPUT_IDS.forEach((id) => {
