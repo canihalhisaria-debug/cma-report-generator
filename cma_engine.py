@@ -118,6 +118,8 @@ class CMAEngine:
         total_cogs = [s * (1 - a["gp_ratio"]) for s in sales]
 
         op_base = [s * 0.18 * a["expense_load"] for s in sales]
+        min_op_margin = max(0.08, pct(self.p.roi) + 0.03)
+        op_exp_total = [min(ob, max(s * (1 - a["gp_ratio"] - min_op_margin), s * 0.08)) for ob, s in zip(op_base, sales)]
         salary = [v * 0.28 for v in op_base]
         rent = [v * 0.15 for v in op_base]
         power = [v * 0.03 for v in op_base]
@@ -126,9 +128,8 @@ class CMAEngine:
         office = [v * 0.05 for v in op_base]
         print_stationery = [v * 0.008 for v in op_base]
         repairs = [v * 0.015 for v in op_base]
-        other_op = [v - (sa + re + po + tr + te + of + ps + rp) for v, sa, re, po, tr, te, of, ps, rp in zip(op_base, salary, rent, power, travel, tel, office, print_stationery, repairs)]
+        other_op = [max(v - (sa + re + po + tr + te + of + ps + rp), 0.0) for v, sa, re, po, tr, te, of, ps, rp in zip(op_exp_total, salary, rent, power, travel, tel, office, print_stationery, repairs)]
 
-        op_exp_total = op_base
         pbdt = [s - c - o for s, c, o in zip(sales, total_cogs, op_exp_total)]
         interest_cc = [self.p.cc_amount * pct(self.p.roi) for _ in YEARS]
         depreciation = [self.p.cc_amount * 0.04 * (0.86**i) for i in range(5)]
@@ -190,23 +191,68 @@ class CMAEngine:
         cc_bank = [self.p.cc_amount] * 5
         sundry_creditors = pl["creditors"]
         other_cl = [v * 0.05 for v in sundry_creditors]
-        total_cl = [cc + cr + oc for cc, cr, oc in zip(cc_bank, sundry_creditors, other_cl)]
 
         receivables = pl["receivables"]
         inventory = pl["closing_stock"]
-        cash_bank = [s * 0.03 for s in pl["sales"]]
         net_block = [self.p.cc_amount * 0.22 * (0.82**i) for i in range(5)]
 
-        total_liabilities = [cl + nw for cl, nw in zip(total_cl, net_worth)]
-        other_ca = [max(tl - (r + st + c + nb), 0.0) for tl, r, st, c, nb in zip(total_liabilities, receivables, inventory, cash_bank, net_block)]
-        total_ca = [r + st + c + o for r, st, c, o in zip(receivables, inventory, cash_bank, other_ca)]
-        total_assets = [ca + nb for ca, nb in zip(total_ca, net_block)]
+        cash_bank: list[float] = []
+        short_term_borrowings_others: list[float] = []
+        other_term_liabilities: list[float] = []
+        other_ca: list[float] = []
+        total_cl: list[float] = []
+        total_liabilities: list[float] = []
+        total_ca: list[float] = []
+        total_assets: list[float] = []
+
+        opening_cash = self.p.cc_amount * 0.02
+        prev_wc_investment = 0.0
+        for i in range(5):
+            wc_investment = receivables[i] + inventory[i] - sundry_creditors[i]
+            delta_wc = wc_investment - prev_wc_investment
+            operating_cash = pl["retained_profit"][i] + (pl["depreciation"][i] * 0.6)
+            raw_cash = opening_cash + operating_cash - max(delta_wc, 0.0)
+
+            funding_gap = max(-raw_cash, 0.0)
+            cash_value = max(raw_cash, 0.0)
+
+            cl_other = sundry_creditors[i] + other_cl[i]
+            min_ca_for_mpbf = (cc_bank[i] + cl_other) / 0.75
+            ca_without_other = receivables[i] + inventory[i] + cash_value
+            mpbf_shortfall_assets = max(min_ca_for_mpbf - ca_without_other, 0.0)
+
+            st_borr = funding_gap
+            liabilities_base = cc_bank[i] + sundry_creditors[i] + other_cl[i] + st_borr + net_worth[i]
+            balancing_other_ca = max(liabilities_base - (ca_without_other + net_block[i]), 0.0)
+
+            term_support = 0.0
+            if mpbf_shortfall_assets > balancing_other_ca:
+                term_support = mpbf_shortfall_assets - balancing_other_ca
+                liabilities_base += term_support
+                balancing_other_ca = mpbf_shortfall_assets
+
+            current_liabilities_total = cc_bank[i] + sundry_creditors[i] + other_cl[i] + st_borr
+            current_assets_total = ca_without_other + balancing_other_ca
+            liabilities_total = liabilities_base
+            assets_total = current_assets_total + net_block[i]
+
+            cash_bank.append(cash_value)
+            short_term_borrowings_others.append(st_borr)
+            other_term_liabilities.append(term_support)
+            other_ca.append(balancing_other_ca)
+            total_cl.append(current_liabilities_total)
+            total_liabilities.append(liabilities_total)
+            total_ca.append(current_assets_total)
+            total_assets.append(assets_total)
+
+            opening_cash = cash_value
+            prev_wc_investment = wc_investment
 
         return {
             "cc_from_applicant_bank": cc_bank,
             "cc_from_other_banks": [0.0] * 5,
             "bills_purchased": [0.0] * 5,
-            "short_term_borrowings_others": [0.0] * 5,
+            "short_term_borrowings_others": short_term_borrowings_others,
             "sundry_creditors": sundry_creditors,
             "advances_customers": [0.0] * 5,
             "provision_tax": pl["tax"],
@@ -215,8 +261,8 @@ class CMAEngine:
             "other_current_liabilities": other_cl,
             "total_current_liabilities": total_cl,
             "term_loans": [0.0] * 5,
-            "other_term_liabilities": [0.0] * 5,
-            "total_outside_liabilities": total_cl,
+            "other_term_liabilities": other_term_liabilities,
+            "total_outside_liabilities": [cl + ot for cl, ot in zip(total_cl, other_term_liabilities)],
             "share_capital": share_capital,
             "general_reserve": [0.0] * 5,
             "revaluation_reserve": [0.0] * 5,
