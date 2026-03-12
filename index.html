@@ -6,6 +6,8 @@
     <title>Banker-Grade CMA Dashboard</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
     <script src="app.js" defer></script>
   </head>
   <body>
@@ -25,7 +27,7 @@
         </div>
         <div class="actions">
           <button id="run" class="primary">Generate CMA</button>
-          <button id="download">Download Fixed Workbook</button>
+          <button id="download">Download Same-as-Display PDF</button>
         </div>
       </section>
 
