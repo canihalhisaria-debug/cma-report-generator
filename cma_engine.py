@@ -111,8 +111,12 @@ class CMAEngine:
         debtors = [s * (a["debtors_days"] / 360) for s in sales]
         creditors = [s * (a["creditors_days"] / 360) for s in sales]
 
-        purchases = [max(s * (1 - a["gp_ratio"]) + cs - os, 0) for s, cs, os in zip(sales, closing_stock, opening_stock)]
-        carriage = [p * 0.008 for p in purchases]
+        carriage_rate = 0.008
+        purchases = [
+            max((s * (1 - a["gp_ratio"]) - os + cs) / (1 + carriage_rate), 0.0)
+            for s, cs, os in zip(sales, closing_stock, opening_stock)
+        ]
+        carriage = [p * carriage_rate for p in purchases]
         commission_purchase = [p * 0.0 for p in purchases]
         brokerage_purchase = [p * 0.0 for p in purchases]
         total_cogs = [s * (1 - a["gp_ratio"]) for s in sales]
@@ -120,18 +124,20 @@ class CMAEngine:
         op_base = [s * 0.18 * a["expense_load"] for s in sales]
         min_op_margin = max(0.08, pct(self.p.roi) + 0.03)
         op_exp_total = [min(ob, max(s * (1 - a["gp_ratio"] - min_op_margin), s * 0.08)) for ob, s in zip(op_base, sales)]
-        salary = [v * 0.28 for v in op_base]
-        rent = [v * 0.15 for v in op_base]
-        power = [v * 0.03 for v in op_base]
-        travel = [v * 0.02 for v in op_base]
-        tel = [v * 0.015 for v in op_base]
-        office = [v * 0.05 for v in op_base]
-        print_stationery = [v * 0.008 for v in op_base]
-        repairs = [v * 0.015 for v in op_base]
+        salary = [v * 0.28 for v in op_exp_total]
+        rent = [v * 0.15 for v in op_exp_total]
+        power = [v * 0.03 for v in op_exp_total]
+        travel = [v * 0.02 for v in op_exp_total]
+        tel = [v * 0.015 for v in op_exp_total]
+        office = [v * 0.05 for v in op_exp_total]
+        print_stationery = [v * 0.008 for v in op_exp_total]
+        repairs = [v * 0.015 for v in op_exp_total]
         other_op = [max(v - (sa + re + po + tr + te + of + ps + rp), 0.0) for v, sa, re, po, tr, te, of, ps, rp in zip(op_exp_total, salary, rent, power, travel, tel, office, print_stationery, repairs)]
 
         pbdt = [s - c - o for s, c, o in zip(sales, total_cogs, op_exp_total)]
-        interest_cc = [self.p.cc_amount * pct(self.p.roi) for _ in YEARS]
+        cc_utilization = [max((d + cs - cr) * 0.75, 0.0) for d, cs, cr in zip(debtors, closing_stock, creditors)]
+        cc_drawn = [min(self.p.cc_amount, util) for util in cc_utilization]
+        interest_cc = [cc * pct(self.p.roi) for cc in cc_drawn]
         dep_schedule = self._build_depreciation_schedule(sales)
         depreciation = dep_schedule["depreciation"]
         pat_before_other = [p - i - d for p, i, d in zip(pbdt, interest_cc, depreciation)]
