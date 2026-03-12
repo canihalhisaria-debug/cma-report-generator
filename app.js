@@ -265,28 +265,102 @@ function render(data) {
   const projectedPlBody = projectedPlRows.map((r) => row(r)).join("");
 
   const bsRows = [
-    row({ label: "Inventory", vals: data.map((d) => d.inv) }),
-    row({ label: "Debtors", vals: data.map((d) => d.debt) }),
-    row({ label: "Creditors", vals: data.map((d) => d.cred) }),
-    row({ label: "Current Assets", vals: data.map((d) => d.ca) }),
-    row({ label: "Current Liabilities", vals: data.map((d) => d.cl) }),
-    row({ label: "Working Capital", vals: data.map((d) => d.wc) }),
+    row({ label: "CURRENT LIABILITIES", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Short Term Borrowings from Banks", vals: blankVals() }),
+    row({ label: "(i) From Applicant Bank", vals: data.map((d) => d.cc), className: "pl-subsection" }),
+    row({ label: "(ii) From Other Banks", vals: blankVals() }),
+    row({ label: "(iii) Of Which Bills Purchased & Bills Discounted", vals: blankVals() }),
+    row({ label: "Sub-Total (A)", vals: data.map((d) => d.cc), className: "pl-total" }),
+    row({ label: "Short Term Borrowings from Others", vals: blankVals() }),
+    row({ label: "Sundry Creditors (Trade)", vals: data.map((d) => d.cred) }),
+    row({ label: "Advances from Customers / Deposits from Dealers", vals: blankVals() }),
+    row({ label: "Provision for Taxation", vals: data.map((d) => d.tax) }),
+    row({ label: "Dividend Payable", vals: blankVals() }),
+    row({ label: "Other Statutory Liabilities (Due within One Year)", vals: data.map((d) => d.sl) }),
+    row({ label: "Other Current Liabilities & Provisions (Due within One Year)", vals: blankVals() }),
+    row({ label: "Total Current Liabilities (B)", vals: data.map((d) => d.cl), className: "pl-total" }),
+    row({ label: "TERM LIABILITIES", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Term Loans (Excluding Installments Payable within One Year)", vals: data.map((d) => d.tl) }),
+    row({ label: "Other Term Liabilities", vals: blankVals() }),
+    row({ label: "Total Term Liabilities (C)", vals: data.map((d) => d.tl), className: "pl-total" }),
+    row({ label: "TOTAL OUTSIDE LIABILITIES", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Total Outside Liabilities (D)", vals: data.map((d) => d.cl + d.tl), className: "pl-total" }),
+    row({ label: "Share Capital", vals: data.map((d) => d.cap) }),
+    row({ label: "General Reserve", vals: data.map((d) => d.res) }),
+    row({ label: "Surplus / (Deficit) in P&L A/c (adjusted after drawings)", vals: data.map((d) => d.pat), className: "pl-subsection" }),
+    row({ label: "Net Worth", vals: data.map((d) => d.nw), className: "pl-total" }),
+    row({ label: "TOTAL LIABILITIES", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Total Liabilities (F)", vals: data.map((d) => d.cl + d.tl + d.nw), className: "pl-total" }),
+    row({ label: "CURRENT ASSETS", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Cash & Bank Balances", vals: data.map((d) => d.cash) }),
+    row({ label: "Receivables other than Deferred & Export Receivables", vals: data.map((d) => d.debt) }),
+    row({ label: "Stocks-in-Trade", vals: data.map((d) => d.inv) }),
+    row({ label: "Other Current Assets", vals: data.map((d) => d.oca + d.la) }),
+    row({ label: "Total Current Assets (G)", vals: data.map((d) => d.ca), className: "pl-total" }),
+    row({ label: "FIXED ASSETS", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Gross Block", vals: data.map((d) => d.gfa) }),
+    row({ label: "Depreciation to Date", vals: data.map((d) => d.accDep) }),
+    row({ label: "Net Block (H)", vals: data.map((d) => d.nfa), className: "pl-total" }),
+    row({ label: "TOTAL ASSETS", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Total Assets (J)", vals: data.map((d) => d.ca + d.nfa), className: "pl-total" }),
+    row({ label: "NET WORKING CAPITAL", vals: blankVals(), className: "pl-section" }),
+    row({ label: "Net Working Capital (L)", vals: data.map((d) => d.wc), className: "pl-total" }),
+    row({ label: "Diff Check Rounded (M)", vals: data.map((d) => Math.round((d.cl + d.tl + d.nw) - (d.ca + d.nfa))), kind: "num" }),
+    row({ label: "Balance Status (N)", vals: data.map((d) => (Math.round((d.cl + d.tl + d.nw) - (d.ca + d.nfa)) === 0 ? "OK" : "CHECK")), kind: "blank", className: "pl-subsection" }),
   ].join("");
 
-  const ratioRows = [
-    row({ label: "Current Ratio", vals: data.map((d) => d.currentRatio), kind: "num" }),
-    row({ label: "Quick Ratio", vals: data.map((d) => d.quickRatio), kind: "num" }),
-    row({ label: "EBIT Ratio", vals: data.map((d) => d.ebitRatio), kind: "pct" }),
-    row({ label: "Net Profit Ratio", vals: data.map((d) => d.netProfitRatio), kind: "pct" }),
-    row({ label: "DSCR", vals: data.map((d) => d.dscr), kind: "num" }),
-  ].join("");
+  const ratioInput = [
+    { name: "Current Ratio", num: "Current Assets", den: "Current Liabilities", vals: data.map((d) => d.currentRatio), acceptable: ">=1.33", isPct: false },
+    { name: "Quick Ratio", num: "Quick Assets", den: "Current Liabilities", vals: data.map((d) => d.quickRatio), acceptable: ">=1.00", isPct: false },
+    { name: "Debt Equity Ratio", num: "Total Debt", den: "Net Worth", vals: data.map((d) => safeDiv(d.cl + d.tl, d.nw)), acceptable: "<=2.00", isPct: false },
+    { name: "Debt Asset Ratio", num: "Total Debt", den: "Total Assets", vals: data.map((d) => safeDiv(d.cl + d.tl, d.ca + d.nfa)), acceptable: "<=0.75", isPct: false },
+    { name: "Gross Profit Ratio", num: "Gross Profit", den: "Sales", vals: data.map((d) => d.gpRatio), acceptable: ">=15%", isPct: true },
+    { name: "Operating Profit Ratio", num: "EBIT", den: "Sales", vals: data.map((d) => d.ebitRatio), acceptable: ">=10%", isPct: true },
+    { name: "Net Profit Ratio", num: "PAT", den: "Sales", vals: data.map((d) => d.netProfitRatio), acceptable: ">=5%", isPct: true },
+    { name: "DSCR", num: "Cash Profit", den: "Debt Service", vals: data.map((d) => d.dscr), acceptable: "2.00+", isPct: false },
+  ];
+
+  const ratioRows = ratioInput
+    .map((r, i) => {
+      const fy1 = r.vals[0] || 0;
+      const status = (r.isPct ? fy1 >= Number(r.acceptable.replace(/[^\d.]/g, "")) : fy1 >= 1) ? "OK" : "Weak";
+      return `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${r.name}</td>
+        <td>${r.num}</td>
+        <td>${r.den}</td>
+        ${r.vals.map((v) => `<td>${r.isPct ? pct(v) : Number(v || 0).toFixed(2)}</td>`).join("")}
+        <td>${r.acceptable}</td>
+        <td class="${status === "OK" ? "ok" : "bad"}">${status}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const ratioTable = `
+    <h3>Financial Ratios Analysis</h3>
+    <table class="projected-pl">
+      <thead>
+        <tr>
+          <th>S.No</th>
+          <th>Particulars</th>
+          <th>Numerator</th>
+          <th>Denominator</th>
+          ${periods.map((_, i) => `<th>FY-${i + 1}</th>`).join("")}
+          <th>Bank Acceptable</th>
+          <th>Status FY-1</th>
+        </tr>
+      </thead>
+      <tbody>${ratioRows}</tbody>
+    </table>
+  `;
 
   const fyHeaders = periods.map((_, i) => `FY ${i + 1}`);
 
   document.getElementById("output").innerHTML =
     table("Projected PL", projectedPlBody, "Particulars", "projected-pl", fyHeaders) +
-    table("Projected Balance Sheet", bsRows) +
-    table("Financial Ratios", ratioRows);
+    table("Projected BS", bsRows, "Particulars", "projected-pl", fyHeaders) +
+    ratioTable;
 }
 
 function buildWorkbook(data) {
