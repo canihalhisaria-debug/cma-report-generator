@@ -291,14 +291,146 @@ function render(data) {
 
 function buildWorkbook(data) {
   const wb = XLSX.utils.book_new();
-  const periods = data.map((d) => d.year);
-  const addSheet = (name, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[name], ["Head", ...periods], ...rows]), name);
+  const years = data.map((_, i) => `FY ${i + 1}`);
+  const blank = () => data.map(() => 0);
 
-  addSheet("Dashboard", [["User Input: CC Amount", num("cc-amount")], ["User Input: ROI %", num("roi")]]);
-  addSheet("Profit & Loss", [["Sales", ...data.map((d) => d.totalIncome)], ["Interest", ...data.map((d) => d.totalInterest)], ["PAT", ...data.map((d) => d.pat)]]);
-  addSheet("Balance Sheet", [["Stock", ...data.map((d) => d.inv)], ["Debtors", ...data.map((d) => d.debt)], ["Creditors", ...data.map((d) => d.cred)], ["Working Capital", ...data.map((d) => d.wc)]]);
-  addSheet("Working Capital Analysis", [["Current Assets", ...data.map((d) => d.ca)], ["Current Liabilities", ...data.map((d) => d.cl)], ["Gap", ...data.map((d) => d.wc)]]);
-  addSheet("Financial Ratios", [["Current Ratio", ...data.map((d) => d.currentRatio)], ["Quick Ratio", ...data.map((d) => d.quickRatio)], ["DSCR", ...data.map((d) => d.dscr)]]);
+  const plRows = [
+    ["1. Gross Income", ...data.map((d) => d.totalIncome)],
+    ["(i) Sales (Net of Returns)", ...data.map((d) => d.totalIncome)],
+    ["(a) Domestic Sales", ...data.map((d) => d.dom)],
+    ["(b) Export Sales", ...data.map((d) => d.exp)],
+    ["(c) Sub-Total (a + b)", ...data.map((d) => d.dom + d.exp)],
+    ["(d) Percentage Rise (+) or Fall (−) in Sales Turnover Compared to Previous Year", ...data.map((_, i) => (i === 0 ? 0 : 12))],
+    ["(ii) Other Income", ...blank()],
+    ["(a) Duty Drawback", ...blank()],
+    ["(b) Cash Assistance", ...blank()],
+    ["(c) Commission & Brokerage Received", ...blank()],
+    ["(d) Sub-Total (a + b + c)", ...blank()],
+    ["(iii) Total Gross Income (i + ii)", ...data.map((d) => d.totalIncome)],
+    ["2. Cost of Sales", ...data.map((d) => d.materialCost)],
+    ["(i) Purchases", ...data.map((d) => d.pur)],
+    ["(ii) Other Trading Expenses", ...blank()],
+    ["• Carriage Inward", ...blank()],
+    ["• Commission on Purchases", ...blank()],
+    ["• Brokerage on Purchases", ...blank()],
+    ["(iii) Sub-Total (i + ii)", ...data.map((d) => d.pur)],
+    ["(iv) Add : Opening Stock", ...data.map((d) => d.os)],
+    ["(v) Sub-Total (iii + iv)", ...data.map((d) => d.pur + d.os)],
+    ["(vi) Less : Closing Stock", ...data.map((d) => d.cs)],
+    ["(vii) Total Cost of Sales (v − vi)", ...data.map((d) => d.materialCost)],
+    ["3. Operating Expenses", ...data.map((d) => d.totalOpex)],
+    ["• Salary", ...data.map((d) => d.sw)],
+    ["• Rent", ...data.map((d) => d.rent)],
+    ["• Power & Fuel", ...data.map((d) => d.pf)],
+    ["• Travelling & Conveyance", ...data.map((d) => d.ps)],
+    ["• Telephone & Internet", ...data.map((d) => d.oe * 0.2)],
+    ["• Office Expenses", ...data.map((d) => d.oe * 0.25)],
+    ["• Printing & Stationery", ...data.map((d) => d.oe * 0.15)],
+    ["• Repairs & Maintenance", ...data.map((d) => d.oe * 0.2)],
+    ["• Other Operating Expenses", ...data.map((d) => d.oe * 0.2)],
+    ["4. Operating Profit (Before Interest & Depreciation)", ...data.map((d) => d.ebit)],
+    ["5. Interest", ...data.map((d) => d.totalInterest)],
+    ["• Interest on Cash Credit / OD", ...data.map((d) => d.ccInt)],
+    ["• Interest on Term Loans", ...data.map((d) => d.tlInt)],
+    ["• Interest on Unsecured Loans", ...blank()],
+    ["6. Depreciation", ...data.map((d) => d.dep)],
+    ["7. Operating Profit (After Interest & Depreciation)", ...data.map((d) => d.ebt)],
+    ["8. Other Non-Operating Income / Expenses", ...blank()],
+    ["(i) Add : Other Non-Operating Income", ...blank()],
+    ["(a) Interest Income", ...blank()],
+    ["(b) Incentive / Subsidy", ...blank()],
+    ["(c) Other Income", ...blank()],
+    ["(d) Sub-Total (Incomes)", ...blank()],
+    ["(ii) Less : Other Non-Operating Expenses", ...blank()],
+    ["(a) Loss on Sale of Assets", ...blank()],
+    ["(b) Donation / CSR / Charity", ...blank()],
+    ["(c) Penalty / Late Fees", ...blank()],
+    ["(d) Misc. Non-Operating Expenses", ...blank()],
+    ["(e) Sub-Total (Expenses)", ...blank()],
+    ["(iii) Net Other Non-Operating Income / Expenses", ...blank()],
+    ["9. Profit Before Tax (PBT)", ...data.map((d) => d.ebt)],
+    ["10. Provision for Taxes", ...data.map((d) => d.tax)],
+    ["11. Net Profit / Loss", ...data.map((d) => d.pat)],
+    ["12. Dividend", ...blank()],
+    ["(a) Equity Dividend Paid", ...blank()],
+    ["(b) Dividend Rate", ...blank()],
+    ["13. Retained Profit", ...data.map((d) => d.pat)],
+    ["14. Retained Profit / Net Profit (%)", ...data.map(() => 100)],
+  ];
+
+  const bsRows = [
+    ["CURRENT LIABILITIES", ...blank()],
+    ["Short Term Borrowings from Banks", ...blank()],
+    ["(i) From Applicant Bank", ...data.map((d) => d.cc)],
+    ["(ii) From Other Banks", ...blank()],
+    ["(iii) Of Which Bills Purchased & Bills Discounted", ...blank()],
+    ["Sub-Total (A)", ...data.map((d) => d.cc)],
+    ["Short Term Borrowings from Others", ...blank()],
+    ["Sundry Creditors (Trade)", ...data.map((d) => d.cred)],
+    ["Advances from Customers / Deposits from Dealers", ...blank()],
+    ["Provision for Taxation", ...data.map((d) => d.tax)],
+    ["Dividend Payable", ...blank()],
+    ["Other Statutory Liabilities (Due within One Year)", ...data.map((d) => d.sl)],
+    ["Deposits / Debentures / Installments under Term Loans / DPGs etc. (Due within One Year)", ...blank()],
+    ["Other Current Liabilities & Provisions (Due within One Year)", ...blank()],
+    ["Total Current Liabilities (B)", ...data.map((d) => d.cl)],
+    ["TERM LIABILITIES", ...blank()],
+    ["Term Loans (Excluding Installments Payable within One Year)", ...data.map((d) => d.tl)],
+    ["Other Term Liabilities", ...blank()],
+    ["Total Term Liabilities (C)", ...data.map((d) => d.tl)],
+    ["TOTAL OUTSIDE LIABILITIES", ...blank()],
+    ["Total Outside Liabilities (D)", ...data.map((d) => d.cl + d.tl)],
+    ["", ...blank()],
+    ["Share Capital", ...data.map((d) => d.cap)],
+    ["General Reserve", ...data.map((d) => d.res)],
+    ["Revaluation Reserve", ...blank()],
+    ["Other Reserves (Excluding Provisions)", ...blank()],
+    ["Surplus / (Deficit) in P&L A/c (adjusted after drawings)", ...data.map((d) => d.pat)],
+    ["", ...blank()],
+    ["Net Worth", ...data.map((d) => d.nw)],
+    ["TOTAL LIABILITIES", ...blank()],
+    ["Total Liabilities (F)", ...data.map((d) => d.cl + d.tl + d.nw)],
+    ["CURRENT ASSETS", ...blank()],
+    ["Cash & Bank Balances", ...data.map((d) => d.cash)],
+    ["Government & Trustee Securities", ...blank()],
+    ["Fixed Deposits with Banks", ...blank()],
+    ["Receivables other than Deferred & Export Receivables", ...data.map((d) => d.debt)],
+    ["Export Receivables", ...blank()],
+    ["Installments of Deferred Receivables (Due within One Year)", ...blank()],
+    ["Stocks-in-Trade", ...data.map((d) => d.inv)],
+    ["Advances to Suppliers of Merchandise", ...blank()],
+    ["Advance Payment of Taxes", ...blank()],
+    ["Other Current Assets", ...data.map((d) => d.oca + d.la)],
+    ["Total Current Assets (G)", ...data.map((d) => d.ca)],
+    ["FIXED ASSETS", ...blank()],
+    ["Gross Block", ...data.map((d) => d.gfa)],
+    ["Depreciation to Date", ...data.map((d) => d.accDep)],
+    ["Net Block (H)", ...data.map((d) => d.nfa)],
+    ["OTHER NON-CURRENT ASSETS", ...blank()],
+    ["Other Investments", ...blank()],
+    ["Security Deposits / Tender Deposits", ...blank()],
+    ["Other Non-Current Assets", ...blank()],
+    ["Total Other Non-Current Assets (I)", ...blank()],
+    ["INTANGIBLE ASSETS", ...blank()],
+    ["Intangible Assets", ...blank()],
+    ["TOTAL ASSETS", ...blank()],
+    ["Total Assets (J)", ...data.map((d) => d.ca + d.nfa)],
+    ["TANGIBLE NET WORTH", ...blank()],
+    ["Tangible Net Worth (K)", ...data.map((d) => d.nw)],
+    ["NET WORKING CAPITAL", ...blank()],
+    ["Net Working Capital (L)", ...data.map((d) => d.wc)],
+    ["Diff Check Rounded (M)", ...data.map((d) => Math.round((d.cl + d.tl + d.nw) - (d.ca + d.nfa)))],
+    ["Balance Status (N)", ...data.map((d) => (Math.round((d.cl + d.tl + d.nw) - (d.ca + d.nfa)) === 0 ? "OK" : "CHECK"))],
+  ];
+
+  const plSheet = XLSX.utils.aoa_to_sheet([["PROJECTED PL"], ["Particulars", ...years], ...plRows]);
+  const bsSheet = XLSX.utils.aoa_to_sheet([["PROJECTED BS"], ["Particulars", ...years], ...bsRows]);
+
+  plSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
+  bsSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
+
+  XLSX.utils.book_append_sheet(wb, plSheet, "Projected PL");
+  XLSX.utils.book_append_sheet(wb, bsSheet, "Projected BS");
 
   return wb;
 }
