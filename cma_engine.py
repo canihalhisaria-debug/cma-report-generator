@@ -132,7 +132,8 @@ class CMAEngine:
 
         pbdt = [s - c - o for s, c, o in zip(sales, total_cogs, op_exp_total)]
         interest_cc = [self.p.cc_amount * pct(self.p.roi) for _ in YEARS]
-        depreciation = [self.p.cc_amount * 0.04 * (0.86**i) for i in range(5)]
+        dep_schedule = self._build_depreciation_schedule(sales)
+        depreciation = dep_schedule["depreciation"]
         pat_before_other = [p - i - d for p, i, d in zip(pbdt, interest_cc, depreciation)]
         other_income = [s * other_income_pct for s in sales]
         pbt = [x + oi for x, oi in zip(pat_before_other, other_income)]
@@ -169,6 +170,12 @@ class CMAEngine:
             "interest_tl": [0.0] * 5,
             "interest_unsecured": [0.0] * 5,
             "depreciation": depreciation,
+            "dep_opening_gross_block": dep_schedule["opening_gross_block"],
+            "dep_additions": dep_schedule["additions"],
+            "dep_gross_block": dep_schedule["gross_block"],
+            "dep_opening_accumulated": dep_schedule["opening_accumulated_dep"],
+            "dep_accumulated": dep_schedule["accumulated_dep"],
+            "dep_net_block": dep_schedule["net_block"],
             "op_profit_after_int_dep": pat_before_other,
             "pbt": pbt,
             "tax": tax,
@@ -177,6 +184,48 @@ class CMAEngine:
             "retained_profit": retained,
             "receivables": debtors,
             "creditors": creditors,
+        }
+
+    def _build_depreciation_schedule(self, sales: list[float]) -> dict[str, list[float]]:
+        dep_rate = 0.10
+        opening_gross = self.p.cc_amount * 0.22
+
+        opening_gross_block: list[float] = []
+        additions: list[float] = []
+        gross_block: list[float] = []
+        opening_acc_dep: list[float] = []
+        dep_charge: list[float] = []
+        accumulated_dep: list[float] = []
+        net_block: list[float] = []
+
+        prev_gross = opening_gross
+        prev_acc_dep = opening_gross * 0.08
+        for i in range(5):
+            addition = (opening_gross * 0.08) if i == 0 else max((sales[i] - sales[i - 1]) * 0.06, 0.0)
+            current_gross = prev_gross + addition
+            current_dep = (prev_gross * dep_rate) + (addition * dep_rate * 0.5)
+            current_acc_dep = prev_acc_dep + current_dep
+            current_net = max(current_gross - current_acc_dep, 0.0)
+
+            opening_gross_block.append(prev_gross)
+            additions.append(addition)
+            gross_block.append(current_gross)
+            opening_acc_dep.append(prev_acc_dep)
+            dep_charge.append(current_dep)
+            accumulated_dep.append(current_acc_dep)
+            net_block.append(current_net)
+
+            prev_gross = current_gross
+            prev_acc_dep = current_acc_dep
+
+        return {
+            "opening_gross_block": opening_gross_block,
+            "additions": additions,
+            "gross_block": gross_block,
+            "opening_accumulated_dep": opening_acc_dep,
+            "depreciation": dep_charge,
+            "accumulated_dep": accumulated_dep,
+            "net_block": net_block,
         }
 
     def _build_bs(self, pl: dict[str, Any], a: dict[str, float]) -> dict[str, Any]:
@@ -191,10 +240,14 @@ class CMAEngine:
         cc_bank = [self.p.cc_amount] * 5
         sundry_creditors = pl["creditors"]
         other_cl = [v * 0.05 for v in sundry_creditors]
+        provision_tax = pl["tax"]
+        dividend_payable = pl["dividend"]
 
         receivables = pl["receivables"]
         inventory = pl["closing_stock"]
-        net_block = [self.p.cc_amount * 0.22 * (0.82**i) for i in range(5)]
+        gross_block = pl["dep_gross_block"]
+        dep_to_date = pl["dep_accumulated"]
+        net_block = pl["dep_net_block"]
 
         cash_bank: list[float] = []
         short_term_borrowings_others: list[float] = []
@@ -216,13 +269,13 @@ class CMAEngine:
             funding_gap = max(-raw_cash, 0.0)
             cash_value = max(raw_cash, 0.0)
 
-            cl_other = sundry_creditors[i] + other_cl[i]
+            cl_other = sundry_creditors[i] + other_cl[i] + provision_tax[i] + dividend_payable[i]
             min_ca_for_mpbf = (cc_bank[i] + cl_other) / 0.75
             ca_without_other = receivables[i] + inventory[i] + cash_value
             mpbf_shortfall_assets = max(min_ca_for_mpbf - ca_without_other, 0.0)
 
             st_borr = funding_gap
-            liabilities_base = cc_bank[i] + sundry_creditors[i] + other_cl[i] + st_borr + net_worth[i]
+            liabilities_base = cc_bank[i] + sundry_creditors[i] + other_cl[i] + provision_tax[i] + dividend_payable[i] + st_borr + net_worth[i]
             balancing_other_ca = max(liabilities_base - (ca_without_other + net_block[i]), 0.0)
 
             term_support = 0.0
@@ -231,7 +284,14 @@ class CMAEngine:
                 liabilities_base += term_support
                 balancing_other_ca = mpbf_shortfall_assets
 
-            current_liabilities_total = cc_bank[i] + sundry_creditors[i] + other_cl[i] + st_borr
+            residual_gap = liabilities_base - (ca_without_other + balancing_other_ca + net_block[i])
+            if residual_gap < 0:
+                extra_term_support = abs(residual_gap)
+                term_support += extra_term_support
+                liabilities_base += extra_term_support
+            balancing_other_ca = max(liabilities_base - (ca_without_other + net_block[i]), 0.0)
+
+            current_liabilities_total = cc_bank[i] + sundry_creditors[i] + other_cl[i] + provision_tax[i] + dividend_payable[i] + st_borr
             current_assets_total = ca_without_other + balancing_other_ca
             liabilities_total = liabilities_base
             assets_total = current_assets_total + net_block[i]
@@ -255,8 +315,8 @@ class CMAEngine:
             "short_term_borrowings_others": short_term_borrowings_others,
             "sundry_creditors": sundry_creditors,
             "advances_customers": [0.0] * 5,
-            "provision_tax": pl["tax"],
-            "dividend_payable": pl["dividend"],
+            "provision_tax": provision_tax,
+            "dividend_payable": dividend_payable,
             "other_statutory": [0.0] * 5,
             "other_current_liabilities": other_cl,
             "total_current_liabilities": total_cl,
@@ -281,8 +341,8 @@ class CMAEngine:
             "advance_tax": [0.0] * 5,
             "other_current_assets": other_ca,
             "total_current_assets": total_ca,
-            "gross_block": [n * 1.25 for n in net_block],
-            "dep_to_date": [g - n for g, n in zip([n * 1.25 for n in net_block], net_block)],
+            "gross_block": gross_block,
+            "dep_to_date": dep_to_date,
             "net_block": net_block,
             "other_investments": [0.0] * 5,
             "security_deposits": [0.0] * 5,
@@ -306,13 +366,13 @@ class CMAEngine:
 
         creditors = bs["sundry_creditors"]
         outstanding = bs["other_current_liabilities"]
-        statutory = [0.0] * 5
+        statutory = [p + d for p, d in zip(bs["provision_tax"], bs["dividend_payable"])]
         other_cl = [0.0] * 5
         total_cl_other = [c + o + s + oc for c, o, s, oc in zip(creditors, outstanding, statutory, other_cl)]
 
         wc_gap = [a - b for a, b in zip(total_ca, total_cl_other)]
         contribution = [a * 0.25 for a in total_ca]
-        mpbf = [a - d - b for a, d, b in zip(total_ca, contribution, total_cl_other)]
+        mpbf = [max(a - d - b, 0.0) for a, d, b in zip(total_ca, contribution, total_cl_other)]
         proposed_cc = [self.p.cc_amount] * 5
 
         nayak_wc_req = [s * 0.25 for s in sales]

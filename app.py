@@ -188,7 +188,7 @@ if submitted:
 
     excel_bytes = build_excel_report(result)
     st.download_button(
-        "Download Excel (PROJECTED PL / BS / RATIOS / WC)",
+        "Download Excel (PROJECTED PL / BS / RATIOS / WC / DEPRECIATION)",
         data=excel_bytes,
         file_name=f"CMA_Phase1_{client_name.replace(' ', '_')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
