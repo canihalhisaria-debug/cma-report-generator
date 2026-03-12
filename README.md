@@ -34,4 +34,7 @@ Open `http://localhost:4173`.
 
 ```bash
 python3 cma_fix.py --cc-amount 10000000 --roi 11
+
+# Text-only output (when binary files are not supported)
+python3 cma_fix.py --cc-amount 10000000 --roi 11 --format csv --output cma_reports
 ```

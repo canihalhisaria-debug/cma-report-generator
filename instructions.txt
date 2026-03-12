@@ -2,6 +2,10 @@ Run this to generate a new fixed workbook (without overwriting original):
 
 python3 cma_fix.py --cc-amount 10000000 --roi 11
 
+If binary files are not supported in your environment, generate text-based CSV reports:
+
+python3 cma_fix.py --cc-amount 10000000 --roi 11 --format csv --output cma_reports
+
 Only these two inputs are required:
 1) CC Amount
 2) ROI
