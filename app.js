@@ -399,6 +399,8 @@ function render(data) {
     </table>
   `;
 
+  const fyHeaders = periods.map((_, i) => `FY ${i + 1}`);
+
   const wcRows = [
     row({ label: "A. Current Assets", vals: blankVals(), kind: "blank", className: "pl-subsection" }),
     row({ label: "Raw Material", vals: blankVals(), kind: "dash" }),
@@ -427,24 +429,20 @@ function render(data) {
     row({ label: "F. Proposed CC Limit", vals: data.map((d) => d.cc), className: "pl-subsection" }),
     row({ label: "", vals: blankVals(), kind: "blank" }),
     row({ label: "Alternative (Nayak Committee Method – MSME)", vals: blankVals(), kind: "blank", className: "pl-subsection" }),
+    row({ label: "Used when Turnover ≤ ₹5 Crore (commonly for MSME CC)", vals: blankVals(), kind: "blank" }),
     row({ label: "Projected Annual Turnover", vals: data.map((d) => d.totalIncome) }),
     row({ label: "Working Capital Requirement @25%", vals: data.map((d) => d.totalIncome * 0.25), className: "pl-total" }),
     row({ label: "Borrower Contribution @5%", vals: data.map((d) => d.totalIncome * 0.05), className: "pl-total" }),
     row({ label: "Eligible Bank Finance @20%", vals: data.map((d) => d.totalIncome * 0.2), className: "pl-total" }),
   ].join("");
 
-  const workingCapitalTable = `
-    <h3>Working Capital Analysis (CMA Format – Tandon / Nayak Based)</h3>
-    <table class="projected-pl">
-      <thead>
-        <tr>
-          <th>Particulars</th>
-          ${periods.map((_, i) => `<th>FY${i + 1}</th>`).join("")}
-        </tr>
-      </thead>
-      <tbody>${wcRows}</tbody>
-    </table>
-  `;
+  const workingCapitalTable = table(
+    "Working Capital Analysis (CMA Format – Tandon / Nayak Based)",
+    wcRows,
+    "Particulars",
+    "projected-pl",
+    fyHeaders
+  );
 
   const depreciationRows = depreciationSchedule.years
     .map((year) => {
@@ -494,8 +492,6 @@ function render(data) {
       <tbody>${depreciationRows}</tbody>
     </table>
   `;
-
-  const fyHeaders = periods.map((_, i) => `FY ${i + 1}`);
 
   document.getElementById("output").innerHTML =
     table("Projected PL", projectedPlBody, "Particulars", "projected-pl", fyHeaders) +
@@ -642,6 +638,43 @@ function buildWorkbook(data) {
 
   const plSheet = XLSX.utils.aoa_to_sheet([["PROJECTED PL"], ["Particulars", ...years], ...plRows]);
   const bsSheet = XLSX.utils.aoa_to_sheet([["PROJECTED BS"], ["Particulars", ...years], ...bsRows]);
+
+  const wcWorkbookRows = [
+    ["A. Current Assets", ...blank()],
+    ["Raw Material", ...blank()],
+    ["Work in Progress", ...blank()],
+    ["Finished Goods", ...data.map((d) => d.inv)],
+    ["Receivables / Sundry Debtors", ...data.map((d) => d.debt)],
+    ["Cash & Bank", ...data.map((d) => d.cash)],
+    ["Other Current Assets", ...data.map((d) => d.oca + d.la)],
+    ["Total Current Assets (A)", ...data.map((d) => d.ca)],
+    ["", ...blank()],
+    ["B. Current Liabilities (Other than Bank)", ...blank()],
+    ["Sundry Creditors", ...data.map((d) => d.cred)],
+    ["Outstanding Expenses", ...blank()],
+    ["Statutory Liabilities", ...data.map((d) => d.sl)],
+    ["Other Current Liabilities", ...blank()],
+    ["Total Current Liabilities (B)", ...data.map((d) => d.cl - d.cc)],
+    ["", ...blank()],
+    ["C. Working Capital Gap (A − B)", ...data.map((d) => d.ca - (d.cl - d.cc))],
+    ["", ...blank()],
+    ["D. Borrower Contribution (Margin)", ...blank()],
+    ["25% of Current Assets (Tandon Method II)", ...data.map((d) => d.ca * 0.25)],
+    ["", ...blank()],
+    ["E. Maximum Permissible Bank Finance (MPBF)", ...blank()],
+    ["MPBF = A − D − B", ...data.map((d) => d.ca - d.ca * 0.25 - (d.cl - d.cc))],
+    ["", ...blank()],
+    ["F. Proposed CC Limit", ...data.map((d) => d.cc)],
+    ["", ...blank()],
+    ["Alternative (Nayak Committee Method – MSME)", ...blank()],
+    ["Used when Turnover ≤ ₹5 Crore (commonly for MSME CC)", ...blank()],
+    ["Projected Annual Turnover", ...data.map((d) => d.totalIncome)],
+    ["Working Capital Requirement @25%", ...data.map((d) => d.totalIncome * 0.25)],
+    ["Borrower Contribution @5%", ...data.map((d) => d.totalIncome * 0.05)],
+    ["Eligible Bank Finance @20%", ...data.map((d) => d.totalIncome * 0.2)],
+  ];
+  const wcSheet = XLSX.utils.aoa_to_sheet([["WORKING CAPITAL ANALYSIS"], ["Particulars", ...years], ...wcWorkbookRows]);
+
   const depreciationRows = [];
 
   depreciationSchedule.years.forEach((year) => {
@@ -660,10 +693,12 @@ function buildWorkbook(data) {
 
   plSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
   bsSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
+  wcSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
   depreciationSheet["!cols"] = [{ wch: 12 }, { wch: 18 }, ...depreciationSchedule.categories.map(() => ({ wch: 18 })), { wch: 14 }];
 
   XLSX.utils.book_append_sheet(wb, plSheet, "Projected PL");
   XLSX.utils.book_append_sheet(wb, bsSheet, "Projected BS");
+  XLSX.utils.book_append_sheet(wb, wcSheet, "Working Capital Analysis");
   XLSX.utils.book_append_sheet(wb, depreciationSheet, "Depreciation Schedule");
 
   return wb;
