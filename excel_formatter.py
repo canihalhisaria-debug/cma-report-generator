@@ -175,6 +175,7 @@ def build_excel_report(result: dict[str, Any]) -> bytes:
         ("B. CURRENT LIABILITIES (OTHER THAN BANK)", None, "section"),
         ("Sundry Creditors", wc["sundry_creditors"], None),
         ("Outstanding Expenses", wc["outstanding_expenses"], None),
+        ("Statutory Liabilities", wc["statutory_liabilities"], None),
         ("Total Current Liabilities (B)", wc["total_current_liabilities"], "total"),
         ("C. WORKING CAPITAL GAP (A - B)", wc["wc_gap"], "section"),
         ("D. BORROWER CONTRIBUTION (25% of CA)", wc["borrower_contribution"], "subsection"),
@@ -186,6 +187,18 @@ def build_excel_report(result: dict[str, Any]) -> bytes:
         ("Eligible Bank Finance @20%", wc["nayak_eligible_bank_finance"], "total"),
     ]
     _write_table(ws_wc, "WORKING CAPITAL ANALYSIS", wc_rows)
+
+    ws_dep = wb.create_sheet("DEPRECIATION SCHEDULE")
+    dep_rows = [
+        ("Opening Gross Block", pl["dep_opening_gross_block"], None),
+        ("Additions During Year", pl["dep_additions"], None),
+        ("Gross Block", pl["dep_gross_block"], "total"),
+        ("Opening Accumulated Depreciation", pl["dep_opening_accumulated"], None),
+        ("Depreciation for the Year", pl["depreciation"], "section"),
+        ("Accumulated Depreciation", pl["dep_accumulated"], "total"),
+        ("Closing Net Block", pl["dep_net_block"], "section"),
+    ]
+    _write_table(ws_dep, "DEPRECIATION SCHEDULE - PRINT FORMAT", dep_rows)
 
     ws_ratios = wb.create_sheet("FINANCIAL RATIOS ANALYSIS")
     ws_ratios.append(["S.No", "Particulars", "Numerator", "Denominator", *YEARS, "Bank Acceptable Benchmark", "Status"])
