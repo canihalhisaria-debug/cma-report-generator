@@ -6,6 +6,7 @@ This script does not overwrite source workbook. It always writes a new file.
 from __future__ import annotations
 
 import argparse
+import csv
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -115,6 +116,39 @@ def write_workbook(output: Path, cc_amount: float, roi: float, years: int = 5) -
     wb.save(output)
 
 
+def write_csv_reports(output_dir: Path, cc_amount: float, roi: float, years: int = 5) -> None:
+    """Write text-based CSV outputs for environments where binary files are not supported."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    data = build_projection(cc_amount, roi, years)
+
+    with (output_dir / "dashboard.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Input", "Value"])
+        writer.writerow(["CC Amount", cc_amount])
+        writer.writerow(["ROI", roi])
+
+    with (output_dir / "projected_pl.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Particulars", *[r["year"] for r in data]])
+        writer.writerow(["Sales", *[r["sales"] for r in data]])
+        writer.writerow(["Interest", *[r["interest"] for r in data]])
+        writer.writerow(["Projected PAT", *[r["pat"] for r in data]])
+
+    with (output_dir / "projected_balance_sheet.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Particulars", *[r["year"] for r in data]])
+        writer.writerow(["Stock", *[r["closing_stock"] for r in data]])
+        writer.writerow(["Debtors", *[r["debtors"] for r in data]])
+        writer.writerow(["Creditors", *[r["creditors"] for r in data]])
+        writer.writerow(["Working Capital", *[r["wc"] for r in data]])
+
+    with (output_dir / "financial_ratios.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Particulars", *[r["year"] for r in data]])
+        writer.writerow(["Current Ratio", *[r["current_ratio"] for r in data]])
+        writer.writerow(["DSCR", *[r["dscr"] for r in data]])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cc-amount", type=float, required=True)
@@ -122,6 +156,12 @@ def main() -> None:
     parser.add_argument("--years", type=int, default=5)
     parser.add_argument("--source", default="FINAL_CMA_REPORT_FINAL.xlsx")
     parser.add_argument("--output", default="FINAL_CMA_REPORT_FINAL_FIXED.xlsx")
+    parser.add_argument(
+        "--format",
+        choices=["xlsx", "csv"],
+        default="xlsx",
+        help="Output format. Use csv for text-only outputs when binary files are not supported.",
+    )
     args = parser.parse_args()
 
     source = Path(args.source)
@@ -129,8 +169,12 @@ def main() -> None:
     if source.exists() and source.resolve() == output.resolve():
         raise ValueError("Output file must be different from source file.")
 
-    write_workbook(output, args.cc_amount, args.roi, args.years)
-    print(f"Fixed file created: {output}")
+    if args.format == "csv":
+        write_csv_reports(output.with_suffix(""), args.cc_amount, args.roi, args.years)
+        print(f"CSV reports created in: {output.with_suffix('')}")
+    else:
+        write_workbook(output, args.cc_amount, args.roi, args.years)
+        print(f"Fixed file created: {output}")
 
 
 if __name__ == "__main__":
