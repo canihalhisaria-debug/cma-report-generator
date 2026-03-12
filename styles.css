@@ -26,3 +26,13 @@ th { background: #e2e8f0; }
 .formula { color: #334155; font-style: italic; }
 .ok { color: #166534; font-weight: 700; }
 .bad { color: #b91c1c; font-weight: 700; }
+
+.projected-pl { table-layout: fixed; }
+.projected-pl th { background: #103c72; color: #fff; font-size: 1.05rem; }
+.projected-pl thead th:first-child { text-align: center; }
+.projected-pl td, .projected-pl th { border-color: #8b8b8b; }
+.projected-pl td:first-child { min-width: 420px; }
+.projected-pl .pl-section td { background: #cfdcc8; font-weight: 700; }
+.projected-pl .pl-subsection td { background: #c7d1de; font-weight: 700; }
+.projected-pl .pl-total td { background: #ead8c5; font-weight: 700; }
+.projected-pl .pl-indent-1 { padding-left: 1.3rem; font-weight: 500; }

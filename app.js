@@ -7,7 +7,7 @@ function safeDiv(a, b) {
 }
 
 function money(v) {
-  return Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+  return Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function pct(v) {
@@ -165,42 +165,126 @@ function buildModel() {
 
 function render(data) {
   const periods = data.map((d) => d.year);
-  const row = (label, vals, kind = "money") => `<tr><td>${label}</td>${vals.map((v) => `<td>${kind === "pct" ? pct(v) : kind === "num" ? Number(v).toFixed(2) : money(v)}</td>`).join("")}</tr>`;
-  const table = (title, body) => `<h3>${title}</h3><table><thead><tr><th>Head</th>${periods.map((p) => `<th>${p}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+  const formatValue = (value, kind = "money") => {
+    if (kind === "pct") return pct(value);
+    if (kind === "num") return Number(value || 0).toFixed(2);
+    if (kind === "blank") return "";
+    return money(value);
+  };
 
-  const plRows = [
-    row("Sales", data.map((d) => d.totalIncome)),
-    row("Opening Stock", data.map((d) => d.os)),
-    row("Purchases", data.map((d) => d.pur)),
-    row("Closing Stock", data.map((d) => d.cs)),
-    row("Material Cost", data.map((d) => d.materialCost)),
-    row("Operating Expenses", data.map((d) => d.totalOpex)),
-    row("Interest on CC", data.map((d) => d.ccInt)),
-    row("Interest on TL", data.map((d) => d.tlInt)),
-    row("EBIT", data.map((d) => d.ebit)),
-    row("EBT", data.map((d) => d.ebt)),
-    row("PAT", data.map((d) => d.pat)),
-  ].join("");
+  const row = ({ label, vals, kind = "money", className = "", labelClass = "" }) => `
+    <tr class="${className}">
+      <td class="${labelClass}">${label}</td>
+      ${vals.map((v) => `<td>${formatValue(v, kind)}</td>`).join("")}
+    </tr>
+  `;
+
+  const table = (title, body, firstColumnLabel = "Head", tableClass = "", headers = periods) => `
+    <h3>${title}</h3>
+    <table class="${tableClass}">
+      <thead>
+        <tr>
+          <th>${firstColumnLabel}</th>
+          ${headers.map((p) => `<th>${p}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+  `;
+
+  const blankVals = () => periods.map(() => 0);
+  const projectedPlRows = [
+    { label: "1. Gross Income", vals: data.map((d) => d.totalIncome), className: "pl-section" },
+    { label: "(i) Sales (Net of Returns)", vals: data.map((d) => d.totalIncome), className: "pl-subsection" },
+    { label: "(a) Domestic Sales", vals: data.map((d) => d.dom), labelClass: "pl-indent-1" },
+    { label: "(b) Export Sales", vals: data.map((d) => d.exp), labelClass: "pl-indent-1" },
+    { label: "(c) Sub-Total (a + b)", vals: data.map((d) => d.dom + d.exp), className: "pl-total", labelClass: "pl-indent-1" },
+    { label: "(d) Percentage Rise (+) or Fall (−) in Sales Turnover Compared to Previous Year", vals: data.map((_, i) => (i === 0 ? 0 : 12)), kind: "num", labelClass: "pl-indent-1" },
+    { label: "(ii) Other Income", vals: data.map((d) => d.ooi), className: "pl-subsection" },
+    { label: "(a) Duty Drawback", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(b) Cash Assistance", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(c) Commission & Brokerage Received", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(d) Sub-Total (a + b + c)", vals: blankVals(), className: "pl-total", labelClass: "pl-indent-1" },
+    { label: "(iii) Total Gross Income (i + ii)", vals: data.map((d) => d.totalIncome), className: "pl-total" },
+
+    { label: "2. Cost of Sales", vals: data.map((d) => d.materialCost), className: "pl-section" },
+    { label: "(i) Purchases", vals: data.map((d) => d.pur), className: "pl-subsection" },
+    { label: "(ii) Other Trading Expenses", vals: blankVals(), className: "pl-subsection" },
+    { label: "• Carriage Inward", vals: data.map((d) => d.ue), labelClass: "pl-indent-1" },
+    { label: "• Commission on Purchases", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "• Brokerage on Purchases", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(iii) Sub-Total (i + ii)", vals: data.map((d) => d.pur + d.ue), className: "pl-total" },
+    { label: "(iv) Add : Opening Stock", vals: data.map((d) => d.os), className: "pl-subsection" },
+    { label: "(v) Sub-Total (iii + iv)", vals: data.map((d) => d.pur + d.ue + d.os), className: "pl-total" },
+    { label: "(vi) Less : Closing Stock", vals: data.map((d) => d.cs), className: "pl-subsection" },
+    { label: "(vii) Total Cost of Sales (v − vi)", vals: data.map((d) => d.materialCost), className: "pl-total" },
+
+    { label: "3. Operating Expenses", vals: data.map((d) => d.totalOpex), className: "pl-section" },
+    { label: "• Salary", vals: data.map((d) => d.sw), labelClass: "pl-indent-1" },
+    { label: "• Rent", vals: data.map((d) => d.rent), labelClass: "pl-indent-1" },
+    { label: "• Power & Fuel", vals: data.map((d) => d.pf), labelClass: "pl-indent-1" },
+    { label: "• Travelling & Conveyance", vals: data.map((d) => d.ps), labelClass: "pl-indent-1" },
+    { label: "• Telephone & Internet", vals: data.map((d) => d.oe * 0.2), labelClass: "pl-indent-1" },
+    { label: "• Office Expenses", vals: data.map((d) => d.oe * 0.25), labelClass: "pl-indent-1" },
+    { label: "• Printing & Stationery", vals: data.map((d) => d.oe * 0.15), labelClass: "pl-indent-1" },
+    { label: "• Repairs & Maintenance", vals: data.map((d) => d.oe * 0.2), labelClass: "pl-indent-1" },
+    { label: "• Other Operating Expenses", vals: data.map((d) => d.oe * 0.2), labelClass: "pl-indent-1" },
+
+    { label: "4. Operating Profit (Before Interest & Depreciation)", vals: data.map((d) => d.ebit), className: "pl-section" },
+    { label: "5. Interest", vals: data.map((d) => d.totalInterest), className: "pl-section" },
+    { label: "• Interest on Cash Credit / OD", vals: data.map((d) => d.ccInt), labelClass: "pl-indent-1" },
+    { label: "• Interest on Term Loans", vals: data.map((d) => d.tlInt), labelClass: "pl-indent-1" },
+    { label: "• Interest on Unsecured Loans", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "6. Depreciation", vals: data.map((d) => d.dep), className: "pl-section" },
+    { label: "7. Operating Profit (After Interest & Depreciation)", vals: data.map((d) => d.ebt), className: "pl-section" },
+
+    { label: "8. Other Non-Operating Income / Expenses", vals: blankVals(), className: "pl-section" },
+    { label: "(i) Add : Other Non-Operating Income", vals: blankVals(), className: "pl-subsection" },
+    { label: "(a) Interest Income", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(b) Incentive / Subsidy", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(c) Other Income", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(d) Sub-Total (Incomes)", vals: blankVals(), className: "pl-total" },
+    { label: "(ii) Less : Other Non-Operating Expenses", vals: blankVals(), className: "pl-subsection" },
+    { label: "(a) Loss on Sale of Assets", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(b) Donation / CSR / Charity", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(c) Penalty / Late Fees", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(d) Misc. Non-Operating Expenses", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(e) Sub-Total (Expenses)", vals: blankVals(), className: "pl-total" },
+    { label: "(iii) Net Other Non-Operating Income / Expenses", vals: blankVals(), className: "pl-subsection" },
+
+    { label: "9. Profit Before Tax (PBT)", vals: data.map((d) => d.ebt), className: "pl-section" },
+    { label: "10. Provision for Taxes", vals: data.map((d) => d.tax), className: "pl-subsection" },
+    { label: "11. Net Profit / Loss", vals: data.map((d) => d.pat), className: "pl-section" },
+    { label: "12. Dividend", vals: blankVals(), className: "pl-subsection" },
+    { label: "(a) Equity Dividend Paid", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "(b) Dividend Rate", vals: blankVals(), labelClass: "pl-indent-1" },
+    { label: "13. Retained Profit", vals: data.map((d) => d.pat), className: "pl-total" },
+    { label: "14. Retained Profit / Net Profit (%)", vals: data.map(() => 100), kind: "num", className: "pl-subsection" },
+  ];
+
+  const projectedPlBody = projectedPlRows.map((r) => row(r)).join("");
 
   const bsRows = [
-    row("Inventory", data.map((d) => d.inv)),
-    row("Debtors", data.map((d) => d.debt)),
-    row("Creditors", data.map((d) => d.cred)),
-    row("Current Assets", data.map((d) => d.ca)),
-    row("Current Liabilities", data.map((d) => d.cl)),
-    row("Working Capital", data.map((d) => d.wc)),
+    row({ label: "Inventory", vals: data.map((d) => d.inv) }),
+    row({ label: "Debtors", vals: data.map((d) => d.debt) }),
+    row({ label: "Creditors", vals: data.map((d) => d.cred) }),
+    row({ label: "Current Assets", vals: data.map((d) => d.ca) }),
+    row({ label: "Current Liabilities", vals: data.map((d) => d.cl) }),
+    row({ label: "Working Capital", vals: data.map((d) => d.wc) }),
   ].join("");
 
   const ratioRows = [
-    row("Current Ratio", data.map((d) => d.currentRatio), "num"),
-    row("Quick Ratio", data.map((d) => d.quickRatio), "num"),
-    row("EBIT Ratio", data.map((d) => d.ebitRatio), "pct"),
-    row("Net Profit Ratio", data.map((d) => d.netProfitRatio), "pct"),
-    row("DSCR", data.map((d) => d.dscr), "num"),
+    row({ label: "Current Ratio", vals: data.map((d) => d.currentRatio), kind: "num" }),
+    row({ label: "Quick Ratio", vals: data.map((d) => d.quickRatio), kind: "num" }),
+    row({ label: "EBIT Ratio", vals: data.map((d) => d.ebitRatio), kind: "pct" }),
+    row({ label: "Net Profit Ratio", vals: data.map((d) => d.netProfitRatio), kind: "pct" }),
+    row({ label: "DSCR", vals: data.map((d) => d.dscr), kind: "num" }),
   ].join("");
 
+  const fyHeaders = periods.map((_, i) => `FY ${i + 1}`);
+
   document.getElementById("output").innerHTML =
-    table("Projected P&L", plRows) +
+    table("Projected PL", projectedPlBody, "Particulars", "projected-pl", fyHeaders) +
     table("Projected Balance Sheet", bsRows) +
     table("Financial Ratios", ratioRows);
 }
