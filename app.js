@@ -212,6 +212,7 @@ function render(data) {
     if (kind === "pct") return pct(value);
     if (kind === "num") return Number(value || 0).toFixed(2);
     if (kind === "blank") return "";
+    if (kind === "dash") return value ? money(value) : "-";
     return money(value);
   };
 
@@ -398,6 +399,53 @@ function render(data) {
     </table>
   `;
 
+  const wcRows = [
+    row({ label: "A. Current Assets", vals: blankVals(), kind: "blank", className: "pl-subsection" }),
+    row({ label: "Raw Material", vals: blankVals(), kind: "dash" }),
+    row({ label: "Work in Progress", vals: blankVals(), kind: "dash" }),
+    row({ label: "Finished Goods", vals: data.map((d) => d.inv) }),
+    row({ label: "Receivables / Sundry Debtors", vals: data.map((d) => d.debt) }),
+    row({ label: "Cash & Bank", vals: data.map((d) => d.cash) }),
+    row({ label: "Other Current Assets", vals: data.map((d) => d.oca + d.la) }),
+    row({ label: "Total Current Assets (A)", vals: data.map((d) => d.ca), className: "pl-total" }),
+    row({ label: "", vals: blankVals(), kind: "blank" }),
+    row({ label: "B. Current Liabilities (Other than Bank)", vals: blankVals(), kind: "blank", className: "pl-subsection" }),
+    row({ label: "Sundry Creditors", vals: data.map((d) => d.cred) }),
+    row({ label: "Outstanding Expenses", vals: blankVals(), kind: "dash" }),
+    row({ label: "Statutory Liabilities", vals: data.map((d) => d.sl), kind: "dash" }),
+    row({ label: "Other Current Liabilities", vals: blankVals(), kind: "dash" }),
+    row({ label: "Total Current Liabilities (B)", vals: data.map((d) => d.cl - d.cc), className: "pl-total" }),
+    row({ label: "", vals: blankVals(), kind: "blank" }),
+    row({ label: "C. Working Capital Gap (A − B)", vals: data.map((d) => d.ca - (d.cl - d.cc)), className: "pl-total" }),
+    row({ label: "", vals: blankVals(), kind: "blank" }),
+    row({ label: "D. Borrower Contribution (Margin)", vals: blankVals(), kind: "blank", className: "pl-subsection" }),
+    row({ label: "25% of Current Assets (Tandon Method II)", vals: data.map((d) => d.ca * 0.25), className: "pl-total" }),
+    row({ label: "", vals: blankVals(), kind: "blank" }),
+    row({ label: "E. Maximum Permissible Bank Finance (MPBF)", vals: blankVals(), kind: "blank", className: "pl-subsection" }),
+    row({ label: "MPBF = A − D − B", vals: data.map((d) => d.ca - d.ca * 0.25 - (d.cl - d.cc)), className: "pl-total" }),
+    row({ label: "", vals: blankVals(), kind: "blank" }),
+    row({ label: "F. Proposed CC Limit", vals: data.map((d) => d.cc), className: "pl-subsection" }),
+    row({ label: "", vals: blankVals(), kind: "blank" }),
+    row({ label: "Alternative (Nayak Committee Method – MSME)", vals: blankVals(), kind: "blank", className: "pl-subsection" }),
+    row({ label: "Projected Annual Turnover", vals: data.map((d) => d.totalIncome) }),
+    row({ label: "Working Capital Requirement @25%", vals: data.map((d) => d.totalIncome * 0.25), className: "pl-total" }),
+    row({ label: "Borrower Contribution @5%", vals: data.map((d) => d.totalIncome * 0.05), className: "pl-total" }),
+    row({ label: "Eligible Bank Finance @20%", vals: data.map((d) => d.totalIncome * 0.2), className: "pl-total" }),
+  ].join("");
+
+  const workingCapitalTable = `
+    <h3>Working Capital Analysis (CMA Format – Tandon / Nayak Based)</h3>
+    <table class="projected-pl">
+      <thead>
+        <tr>
+          <th>Particulars</th>
+          ${periods.map((_, i) => `<th>FY${i + 1}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>${wcRows}</tbody>
+    </table>
+  `;
+
   const depreciationRows = depreciationSchedule.years
     .map((year) => {
       const rowValues = (record) => depreciationSchedule.categories.map((c) => `<td>${money(record[c.key])}</td>`).join("");
@@ -452,6 +500,7 @@ function render(data) {
   document.getElementById("output").innerHTML =
     table("Projected PL", projectedPlBody, "Particulars", "projected-pl", fyHeaders) +
     table("Projected BS", bsRows, "Particulars", "projected-pl", fyHeaders) +
+    workingCapitalTable +
     ratioTable +
     depreciationTable;
 }
