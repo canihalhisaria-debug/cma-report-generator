@@ -126,10 +126,12 @@ function buildModel() {
     const netFixedAssets = grossFixedAssets - accumulatedDepreciation;
     const cashBank = Math.max(0, currentLiabilitiesNonCc + cc - currentAssetsBeforeCash);
     const currentAssets = currentAssetsBeforeCash + cashBank;
-    const capital = cc * (assumptions.equityPct / 100);
-    const reserves = cc * (assumptions.reserveStartPct / 100) + pat * (1 - assumptions.payoutRatio / 100);
-    const netWorth = capital + reserves;
     const currentLiabilities = cc + currentLiabilitiesNonCc;
+    const capital = cc * (assumptions.equityPct / 100);
+    const outsideLiabilities = currentLiabilities + termLoan;
+    const totalAssets = currentAssets + netFixedAssets;
+    const netWorth = totalAssets - outsideLiabilities;
+    const reserves = netWorth - capital;
     const workingCapital = currentAssets - currentLiabilities;
 
     const currentRatio = safeDiv(currentAssets, currentLiabilities);
@@ -209,6 +211,7 @@ function render(data) {
   const periods = data.map((d) => d.year);
   const depreciationSchedule = buildDepreciationSchedule(periods.length);
   const formatValue = (value, kind = "money") => {
+    if (value === "" || value === null || value === undefined) return "";
     if (kind === "pct") return pct(value);
     if (kind === "num") return Number(value || 0).toFixed(2);
     if (kind === "blank") return "";
@@ -236,7 +239,7 @@ function render(data) {
     </table>
   `;
 
-  const blankVals = () => periods.map(() => 0);
+  const blankVals = () => periods.map(() => "");
   const projectedPlRows = [
     { label: "1. Gross Income", vals: data.map((d) => d.totalIncome), className: "pl-section" },
     { label: "(i) Sales (Net of Returns)", vals: data.map((d) => d.totalIncome), className: "pl-subsection" },
@@ -505,7 +508,7 @@ function buildWorkbook(data) {
   const wb = XLSX.utils.book_new();
   const years = data.map((_, i) => `FY ${i + 1}`);
   const depreciationSchedule = buildDepreciationSchedule(years.length);
-  const blank = () => data.map(() => 0);
+  const blank = () => data.map(() => "");
 
   const plRows = [
     ["1. Gross Income", ...data.map((d) => d.totalIncome)],
