@@ -818,12 +818,12 @@ function getStepTarget(stepNumber) {
   return button ? button.dataset.target : null;
 }
 
-function setActiveStep(targetId) {
+function setActiveStep(stepNumber) {
   const progressButtons = document.querySelectorAll("#wizard-progress .step");
   if (!progressButtons.length) return;
 
   progressButtons.forEach((btn) => {
-    const isActive = btn.dataset.target === targetId;
+    const isActive = Number(btn.dataset.step || 0) === stepNumber;
     btn.classList.toggle("active", isActive);
     btn.setAttribute("aria-current", isActive ? "step" : "false");
   });
@@ -838,7 +838,7 @@ function applyWizardStep(stepNumber) {
   });
 
   const target = getStepTarget(currentWizardStep);
-  if (target) setActiveStep(target);
+  if (target) setActiveStep(currentWizardStep);
 
   const backBtn = document.getElementById("wizard-back");
   const nextBtn = document.getElementById("wizard-next");
@@ -945,3 +945,11 @@ INPUT_IDS.forEach((id) => {
 updateFormVisibility();
 applyWizardStep(1);
 run();
+
+document.querySelectorAll(".nav-item").forEach((item) => {
+  item.addEventListener("click", (event) => {
+    event.preventDefault();
+    document.querySelectorAll(".nav-item").forEach((nav) => nav.classList.remove("active"));
+    item.classList.add("active");
+  });
+});
