@@ -1,153 +1,254 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CMA Projection Software</title>
-
-<link rel="stylesheet" href="styles.css">
-
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CMA Projection Software</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" defer></script>
+  <script src="app.js" defer></script>
 </head>
-
 <body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge">C</div>
+        <div>
+          <h2>CMA Pro</h2>
+          <p>Projection Suite</p>
+        </div>
+      </div>
 
-<div class="app">
+      <nav class="nav">
+        <a class="nav-item active" href="#">Dashboard</a>
+        <a class="nav-item" href="#">New CMA</a>
+        <a class="nav-item" href="#">Clients</a>
+        <a class="nav-item" href="#">Reports</a>
+        <a class="nav-item" href="#">Settings</a>
+      </nav>
 
-<!-- SIDEBAR -->
+      <div class="sidebar-card">
+        <p class="mini-label">Bank Ready</p>
+        <strong>5 Year CMA Builder</strong>
+        <span>PL, BS, WC, Ratios, Depreciation</span>
+      </div>
+    </aside>
 
-<div class="sidebar">
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Financial Projection Workspace</p>
+          <h1>CMA Projection Builder</h1>
+          <p class="subtext">Generate banker-style CMA statements from structured inputs.</p>
+        </div>
+        <div class="hero-actions">
+          <button id="save-draft" type="button" class="btn btn-light">Save Draft</button>
+          <button id="run" type="button" class="btn btn-primary">Generate CMA</button>
+        </div>
+      </header>
 
-<h2>CMA Pro</h2>
+      <section class="progress-card">
+        <div class="step active"><span>1</span><strong>Business Setup</strong></div>
+        <div class="step-line"></div>
+        <div class="step"><span>2</span><strong>Loan Inputs</strong></div>
+        <div class="step-line"></div>
+        <div class="step"><span>3</span><strong>Financial Drivers</strong></div>
+        <div class="step-line"></div>
+        <div class="step"><span>4</span><strong>Preview & Export</strong></div>
+      </section>
 
-<ul>
+      <div class="dashboard-grid">
+        <section class="workspace">
+          <div class="section-card">
+            <div class="section-head">
+              <div>
+                <h3>Business Setup</h3>
+                <p>Choose proposal type and projection period</p>
+              </div>
+              <span class="tag">Required</span>
+            </div>
 
-<li class="active">Dashboard</li>
-<li>New CMA</li>
-<li>Clients</li>
-<li>Reports</li>
-<li>Settings</li>
+            <div class="form-grid two-col">
+              <label>Business Type
+                <select id="business-type">
+                  <option>New Business</option>
+                  <option>Existing Business</option>
+                </select>
+              </label>
+              <label>Loan Type
+                <select id="loan-type">
+                  <option>CC</option>
+                  <option>Term Loan</option>
+                  <option>CC + Term Loan</option>
+                </select>
+              </label>
+              <label>Requirement
+                <select id="requirement">
+                  <option>New CC</option>
+                  <option>Enhancement</option>
+                  <option>Renewal</option>
+                  <option>New Term Loan</option>
+                </select>
+              </label>
+              <label>Projection Starting FY
+                <input id="actual-year" type="text" value="FY 2024-25" />
+              </label>
+            </div>
+          </div>
 
-</ul>
+          <div class="section-card">
+            <div class="section-head">
+              <div>
+                <h3>Client / Proposal Details</h3>
+                <p>Basic profile for the proposal</p>
+              </div>
+              <span class="tag">Required</span>
+            </div>
 
-</div>
+            <div class="form-grid two-col">
+              <label>Client Name <input type="text" placeholder="Enter client name" /></label>
+              <label>Firm Name <input type="text" placeholder="Enter firm name" /></label>
+              <label>Constitution
+                <select>
+                  <option>Proprietorship</option>
+                  <option>Partnership</option>
+                  <option>LLP</option>
+                  <option>Pvt Ltd</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label>Business / Industry <input type="text" placeholder="Manufacturing / Trading / Services" /></label>
+              <label>Bank Name <input type="text" placeholder="Enter bank name" /></label>
+              <label>Branch Name <input type="text" placeholder="Enter branch name" /></label>
+            </div>
+          </div>
 
+          <div id="cc-facility-section" class="section-card">
+            <div class="section-head">
+              <div>
+                <h3>CC Facility Details</h3>
+                <p>Working capital inputs</p>
+              </div>
+              <span class="tag">Core</span>
+            </div>
 
-<!-- MAIN AREA -->
+            <div class="form-grid two-col">
+              <label>Existing CC Limit <input type="number" placeholder="0" /></label>
+              <label>Proposed CC Limit <input id="cc-amount" type="number" value="10000000" /></label>
+              <label>CC ROI (%) <input id="roi" type="number" value="11" step="0.1" /></label>
+              <label>CC Utilisation (%) <input type="number" placeholder="100" /></label>
+              <label>Debtors Days <input type="number" placeholder="90" /></label>
+              <label>Creditors Days <input type="number" placeholder="60" /></label>
+              <label>Inventory Days <input type="number" placeholder="45" /></label>
+            </div>
+          </div>
 
-<div class="main">
+          <div id="term-loan-section" class="section-card hidden">
+            <div class="section-head">
+              <div>
+                <h3>Term Loan Details</h3>
+                <p>Repayment and facility inputs</p>
+              </div>
+              <span class="tag">Optional</span>
+            </div>
 
-<div class="topbar">
+            <div class="form-grid two-col">
+              <label>Term Loan Amount <input type="number" placeholder="0" /></label>
+              <label>Term Loan ROI (%) <input type="number" placeholder="11.00" /></label>
+              <label>Repayment Period (Months) <input type="number" placeholder="60" /></label>
+              <label>Moratorium (Months) <input type="number" placeholder="6" /></label>
+            </div>
+          </div>
 
-<h1>CMA Projection Builder</h1>
+          <div id="existing-business-section" class="section-card hidden">
+            <div class="section-head">
+              <div>
+                <h3>Existing Business Inputs</h3>
+                <p>Historical and current operating position</p>
+              </div>
+              <span class="tag">Required</span>
+            </div>
 
-<div class="top-buttons">
+            <div class="form-grid two-col">
+              <label>Last Audited Sales <input type="number" placeholder="0" /></label>
+              <label>Current Year Estimated Sales <input type="number" placeholder="0" /></label>
+              <label>Closing Stock as on Date <input type="number" placeholder="0" /></label>
+              <label>Projection Years <input id="projection-years" type="number" min="2" max="10" value="5" /></label>
+            </div>
+          </div>
+        </section>
 
-<button class="btn-outline">Save Draft</button>
-<button class="btn-primary">Generate CMA</button>
+        <aside class="insights">
+          <div class="insight-card highlight">
+            <p class="mini-label">Dynamic Logic Preview</p>
+            <div class="logic-box">
+              <span>Business Type</span>
+              <strong id="preview-business-type">New Business</strong>
+            </div>
+            <div class="logic-box">
+              <span>Loan Type</span>
+              <strong id="preview-loan-type">CC</strong>
+            </div>
+            <div class="logic-box">
+              <span>Requirement</span>
+              <strong id="preview-requirement">New CC</strong>
+            </div>
+            <div class="logic-box">
+              <span>Visible Sections</span>
+              <strong id="preview-visible-sections">CC + New Business</strong>
+            </div>
+          </div>
 
-</div>
+          <div class="insight-card metrics-card">
+            <p class="mini-label">Quick Indicators</p>
+            <div class="metric-row">
+              <span>Projected Sales</span>
+              <strong>₹45,00,000</strong>
+            </div>
+            <div class="metric-row">
+              <span>Current Ratio</span>
+              <strong class="good">1.45</strong>
+            </div>
+            <div class="metric-row">
+              <span>DSCR</span>
+              <strong class="good">1.68</strong>
+            </div>
+            <div class="metric-row">
+              <span>Status</span>
+              <strong class="good">Healthy</strong>
+            </div>
+          </div>
 
-</div>
+          <div class="insight-card">
+            <p class="mini-label">Validation Checklist</p>
+            <ul class="checklist">
+              <li>Check proposed limit and ROI</li>
+              <li>Keep debtor / creditor days practical</li>
+              <li>Avoid over-hyped sales</li>
+              <li>Match projections with business type</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
 
-
-<div class="grid">
-
-<!-- LEFT PANEL -->
-
-<div class="card">
-
-<h3>Business Setup</h3>
-
-<label>Business Type</label>
-<select>
-<option>New Business</option>
-<option>Existing Business</option>
-</select>
-
-<label>Loan Type</label>
-<select>
-<option>CC</option>
-<option>Term Loan</option>
-<option>CC + Term Loan</option>
-</select>
-
-<label>Requirement</label>
-<select>
-<option>New CC</option>
-<option>Enhancement</option>
-<option>Renewal</option>
-</select>
-
-<label>Projection Starting FY</label>
-<input type="text" value="FY 2025-26">
-
-</div>
-
-
-<div class="card">
-
-<h3>Client Details</h3>
-
-<label>Client Name</label>
-<input type="text">
-
-<label>Firm Name</label>
-<input type="text">
-
-<label>Constitution</label>
-<select>
-<option>Proprietorship</option>
-<option>Partnership</option>
-<option>LLP</option>
-<option>Pvt Ltd</option>
-</select>
-
-<label>Industry</label>
-<input type="text">
-
-<label>Bank Name</label>
-<input type="text">
-
-<label>Branch</label>
-<input type="text">
-
-</div>
-
-<!-- RIGHT PANEL -->
-
-<div class="card preview">
-
-<h3>Projection Preview</h3>
-
-<div class="metric">
-<span>Projected Sales</span>
-<strong>₹45,00,000</strong>
-</div>
-
-<div class="metric">
-<span>Net Profit</span>
-<strong>₹3,80,000</strong>
-</div>
-
-<div class="metric">
-<span>Current Ratio</span>
-<strong class="green">1.45 ✓</strong>
-</div>
-
-<div class="metric">
-<span>DSCR</span>
-<strong class="green">1.68 ✓</strong>
-</div>
-
-</div>
-
-</div>
-
-</div>
-
-</div>
-
+      <section class="output-section">
+        <div class="section-head">
+          <div>
+            <h3>Generated Statements</h3>
+            <p>Auto projection output and export area</p>
+          </div>
+          <div class="hero-actions">
+            <button id="download" type="button" class="btn btn-light">Download Same-as-Display PDF</button>
+          </div>
+        </div>
+        <div id="output"></div>
+      </section>
+    </main>
+  </div>
 </body>
 </html>
