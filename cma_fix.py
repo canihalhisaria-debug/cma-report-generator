@@ -99,8 +99,14 @@ def write_workbook(output: Path, cc_amount: float, roi: float, years: int = 5) -
 
     add_sheet(
         "Projected P&L",
-        ["Sales", "Interest", "Projected PAT"],
-        [[r["sales"] for r in data], [r["interest"] for r in data], [r["pat"] for r in data]],
+        ["Sales", "Opening Stock", "Closing Stock", "Interest", "Projected PAT"],
+        [
+            [r["sales"] for r in data],
+            [r["opening_stock"] for r in data],
+            [r["closing_stock"] for r in data],
+            [r["interest"] for r in data],
+            [r["pat"] for r in data],
+        ],
     )
     add_sheet(
         "Projected Balance Sheet",
@@ -111,6 +117,16 @@ def write_workbook(output: Path, cc_amount: float, roi: float, years: int = 5) -
         "Financial Ratios",
         ["Current Ratio", "DSCR"],
         [[r["current_ratio"] for r in data], [r["dscr"] for r in data]],
+    )
+    add_sheet(
+        "Working Capital Analysis",
+        ["Stock", "Debtors", "Creditors", "Working Capital Gap"],
+        [
+            [r["closing_stock"] for r in data],
+            [r["debtors"] for r in data],
+            [r["creditors"] for r in data],
+            [r["wc"] for r in data],
+        ],
     )
 
     wb.save(output)
@@ -131,6 +147,8 @@ def write_csv_reports(output_dir: Path, cc_amount: float, roi: float, years: int
         writer = csv.writer(f)
         writer.writerow(["Particulars", *[r["year"] for r in data]])
         writer.writerow(["Sales", *[r["sales"] for r in data]])
+        writer.writerow(["Opening Stock", *[r["opening_stock"] for r in data]])
+        writer.writerow(["Closing Stock", *[r["closing_stock"] for r in data]])
         writer.writerow(["Interest", *[r["interest"] for r in data]])
         writer.writerow(["Projected PAT", *[r["pat"] for r in data]])
 
@@ -147,6 +165,14 @@ def write_csv_reports(output_dir: Path, cc_amount: float, roi: float, years: int
         writer.writerow(["Particulars", *[r["year"] for r in data]])
         writer.writerow(["Current Ratio", *[r["current_ratio"] for r in data]])
         writer.writerow(["DSCR", *[r["dscr"] for r in data]])
+
+    with (output_dir / "working_capital_analysis.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Particulars", *[r["year"] for r in data]])
+        writer.writerow(["Stock", *[r["closing_stock"] for r in data]])
+        writer.writerow(["Debtors", *[r["debtors"] for r in data]])
+        writer.writerow(["Creditors", *[r["creditors"] for r in data]])
+        writer.writerow(["Working Capital Gap", *[r["wc"] for r in data]])
 
 
 def main() -> None:
