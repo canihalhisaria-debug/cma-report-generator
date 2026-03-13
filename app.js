@@ -778,6 +778,14 @@ function downloadExcelReport() {
 }
 
 
+const TOTAL_WIZARD_STEPS = 4;
+let currentWizardStep = 1;
+
+function getStepTarget(stepNumber) {
+  const button = document.querySelector(`#wizard-progress .step[data-step="${stepNumber}"]`);
+  return button ? button.dataset.target : null;
+}
+
 function setActiveStep(targetId) {
   const progressButtons = document.querySelectorAll("#wizard-progress .step");
   if (!progressButtons.length) return;
@@ -789,13 +797,23 @@ function setActiveStep(targetId) {
   });
 }
 
-function scrollToSection(targetId) {
-  const targetSection = document.getElementById(targetId);
-  if (!targetSection || targetSection.classList.contains("hidden")) return false;
+function applyWizardStep(stepNumber) {
+  currentWizardStep = Math.min(TOTAL_WIZARD_STEPS, Math.max(1, stepNumber));
 
-  targetSection.scrollIntoView({ behavior: "smooth", block: "start" });
-  setActiveStep(targetId);
-  return true;
+  document.querySelectorAll("[data-form-step]").forEach((section) => {
+    const sectionStep = Number(section.dataset.formStep);
+    section.classList.toggle("wizard-hidden", sectionStep !== currentWizardStep);
+  });
+
+  const target = getStepTarget(currentWizardStep);
+  if (target) setActiveStep(target);
+
+  const backBtn = document.getElementById("wizard-back");
+  const nextBtn = document.getElementById("wizard-next");
+  if (backBtn) backBtn.disabled = currentWizardStep === 1;
+  if (nextBtn) {
+    nextBtn.textContent = currentWizardStep === TOTAL_WIZARD_STEPS ? "Finish" : "Next";
+  }
 }
 
 function updateFormVisibility() {
@@ -851,6 +869,8 @@ function updateFormVisibility() {
       step3.dataset.target = showTermLoanFields ? "term-loan-section" : "cc-facility-section";
     }
   }
+
+  applyWizardStep(currentWizardStep);
 }
 
 let model = [];
@@ -872,17 +892,17 @@ document.getElementById("download").addEventListener("click", async () => {
 
 document.querySelectorAll("#wizard-progress .step").forEach((btn) => {
   btn.addEventListener("click", () => {
-    const { target } = btn.dataset;
-    if (!target) return;
-
-    if (!scrollToSection(target)) {
-      const fallback = document.getElementById("business-setup-section");
-      if (fallback) {
-        fallback.scrollIntoView({ behavior: "smooth", block: "start" });
-        setActiveStep("business-setup-section");
-      }
-    }
+    applyWizardStep(Number(btn.dataset.step || 1));
   });
+});
+
+document.getElementById("wizard-back").addEventListener("click", () => {
+  applyWizardStep(currentWizardStep - 1);
+});
+
+document.getElementById("wizard-next").addEventListener("click", () => {
+  if (currentWizardStep === TOTAL_WIZARD_STEPS) return;
+  applyWizardStep(currentWizardStep + 1);
 });
 
 INPUT_IDS.forEach((id) => {
@@ -891,5 +911,5 @@ INPUT_IDS.forEach((id) => {
 });
 
 updateFormVisibility();
-setActiveStep("business-setup-section");
+applyWizardStep(1);
 run();
