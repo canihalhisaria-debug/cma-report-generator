@@ -14,6 +14,7 @@ SECTION_FILL = PatternFill("solid", fgColor="CFDCC8")
 SUBSECTION_FILL = PatternFill("solid", fgColor="C7D1DE")
 TOTAL_FILL = PatternFill("solid", fgColor="EAD8C5")
 DEFAULT_HEADER_FILL = PatternFill("solid", fgColor="E2E8F0")
+HEADER_FONT = Font(bold=True, color="FFFFFF")
 THIN = Border(
     left=Side(style="thin", color="808080"),
     right=Side(style="thin", color="808080"),
@@ -44,7 +45,7 @@ def _write_table(
     for c in range(1, 7):
         cell = ws.cell(row=ws.max_row, column=c)
         cell.fill = HEADER_FILL
-        cell.font = Font(bold=True, color="FFFFFF")
+        cell.font = HEADER_FONT
         cell.alignment = Alignment(horizontal="center")
         cell.border = THIN
 
@@ -203,8 +204,8 @@ def build_excel_report(result: dict[str, Any]) -> bytes:
     ws_ratios = wb.create_sheet("FINANCIAL RATIOS ANALYSIS")
     ws_ratios.append(["S.No", "Particulars", "Numerator", "Denominator", *YEARS, "Bank Acceptable Benchmark", "Status"])
     for cell in ws_ratios[1]:
-        cell.fill = DEFAULT_HEADER_FILL
-        cell.font = Font(bold=True, color="0F172A")
+        cell.fill = HEADER_FILL
+        cell.font = HEADER_FONT
         cell.border = THIN
         cell.alignment = Alignment(horizontal="center")
 
