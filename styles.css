@@ -184,6 +184,18 @@ h1 {
   gap: 8px;
   color: var(--muted);
   white-space: nowrap;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.step:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 4px;
+  border-radius: 999px;
 }
 
 .step span {
