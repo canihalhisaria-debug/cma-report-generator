@@ -509,6 +509,16 @@ function buildWorkbook(data) {
   const years = data.map((_, i) => `FY ${i + 1}`);
   const depreciationSchedule = buildDepreciationSchedule(years.length);
   const blank = () => data.map(() => "");
+  const ratioInput = [
+    { name: "Current Ratio", num: "Current Assets", den: "Current Liabilities", vals: data.map((d) => d.currentRatio), acceptable: ">=1.33", isPct: false },
+    { name: "Quick Ratio", num: "Quick Assets", den: "Current Liabilities", vals: data.map((d) => d.quickRatio), acceptable: ">=1.00", isPct: false },
+    { name: "Debt Equity Ratio", num: "Total Debt", den: "Net Worth", vals: data.map((d) => safeDiv(d.cl + d.tl, d.nw)), acceptable: "<=2.00", isPct: false },
+    { name: "Debt Asset Ratio", num: "Total Debt", den: "Total Assets", vals: data.map((d) => safeDiv(d.cl + d.tl, d.ca + d.nfa)), acceptable: "<=0.75", isPct: false },
+    { name: "Gross Profit Ratio", num: "Gross Profit", den: "Sales", vals: data.map((d) => d.gpRatio), acceptable: ">=15%", isPct: true },
+    { name: "Operating Profit Ratio", num: "EBIT", den: "Sales", vals: data.map((d) => d.ebitRatio), acceptable: ">=10%", isPct: true },
+    { name: "Net Profit Ratio", num: "PAT", den: "Sales", vals: data.map((d) => d.netProfitRatio), acceptable: ">=5%", isPct: true },
+    { name: "DSCR", num: "Cash Profit", den: "Debt Service", vals: data.map((d) => d.dscr), acceptable: "2.00+", isPct: false },
+  ];
 
   const plRows = [
     ["1. Gross Income", ...data.map((d) => d.totalIncome)],
@@ -694,15 +704,37 @@ function buildWorkbook(data) {
     ...depreciationRows,
   ]);
 
+  const ratioRows = ratioInput.map((ratio, index) => {
+    const fy1 = ratio.vals[0] || 0;
+    const status = (ratio.isPct ? fy1 >= Number(ratio.acceptable.replace(/[^\d.]/g, "")) : fy1 >= 1) ? "OK" : "Weak";
+    return [
+      index + 1,
+      ratio.name,
+      ratio.num,
+      ratio.den,
+      ...ratio.vals.map((value) => (ratio.isPct ? `${Number(value || 0).toFixed(2)}%` : Number(value || 0).toFixed(2))),
+      ratio.acceptable,
+      status,
+    ];
+  });
+
+  const ratioSheet = XLSX.utils.aoa_to_sheet([
+    ["FINANCIAL RATIOS ANALYSIS"],
+    ["S.No", "Particulars", "Numerator", "Denominator", ...years.map((_, i) => `FY-${i + 1}`), "Bank Acceptable", "Status FY-1"],
+    ...ratioRows,
+  ]);
+
   plSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
   bsSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
   wcSheet["!cols"] = [{ wch: 72 }, ...years.map(() => ({ wch: 14 }))];
   depreciationSheet["!cols"] = [{ wch: 12 }, { wch: 18 }, ...depreciationSchedule.categories.map(() => ({ wch: 18 })), { wch: 14 }];
+  ratioSheet["!cols"] = [{ wch: 8 }, { wch: 28 }, { wch: 18 }, { wch: 18 }, ...years.map(() => ({ wch: 12 })), { wch: 16 }, { wch: 12 }];
 
   XLSX.utils.book_append_sheet(wb, plSheet, "Projected PL");
   XLSX.utils.book_append_sheet(wb, bsSheet, "Projected BS");
   XLSX.utils.book_append_sheet(wb, wcSheet, "Working Capital Analysis");
   XLSX.utils.book_append_sheet(wb, depreciationSheet, "Depreciation Schedule");
+  XLSX.utils.book_append_sheet(wb, ratioSheet, "Financial Ratios");
 
   return wb;
 }
