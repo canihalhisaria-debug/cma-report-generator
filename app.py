@@ -18,6 +18,12 @@ def fmt_currency(value: float | str, percent: bool = False) -> str:
     return f"{value:,.2f}"
 
 
+def normalize_year_values(values: list[float] | list[str]) -> list[float] | list[str]:
+    if len(values) >= len(YEARS):
+        return values[: len(YEARS)]
+    return values + [""] * (len(YEARS) - len(values))
+
+
 def inject_table_css() -> None:
     st.markdown(
         """
@@ -98,7 +104,7 @@ def render_statement_table(
             for _ in YEARS:
                 html_parts.append("<td></td>")
         else:
-            for v in values:
+            for v in normalize_year_values(values):
                 if isinstance(v, str):
                     html_parts.append(f"<td>{html.escape(v)}</td>")
                 else:
@@ -134,7 +140,7 @@ def render_ratios_table(ratios_df: pd.DataFrame) -> None:
         html_parts.append(f"<td>{html.escape(str(row['Denominator']))}</td>")
         for fy in YEARS:
             val = row[fy]
-            html_parts.append(f"<td>{val:,.2f}</td>")
+            html_parts.append(f"<td>{val:,.2f}</td>" if pd.notna(val) else "<td></td>")
         html_parts.append(f"<td>{html.escape(str(row['Bank Acceptable Benchmark']))}</td>")
         html_parts.append(f"<td>{html.escape(status)}</td>")
         html_parts.append("</tr>")
