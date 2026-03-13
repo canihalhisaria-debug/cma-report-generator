@@ -17,7 +17,7 @@
 
 body {
   margin: 0;
-  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: Calibri, "Segoe UI", Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
 }
@@ -314,6 +314,88 @@ select {
 #output {
   margin-top: 10px;
   overflow: auto;
+}
+
+#output h3 {
+  margin: 16px 0 0;
+  padding: 8px 12px;
+  background: #1f4e78;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.projected-pl {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+}
+
+.projected-pl th,
+.projected-pl td {
+  border: 1px solid #9aa3ad;
+  padding: 4px 6px;
+  background: #e7edf4;
+}
+
+.projected-pl th {
+  background: #bccad8;
+  text-align: center;
+  font-weight: 700;
+}
+
+.projected-pl th:first-child,
+.projected-pl td:first-child {
+  width: 300px;
+  text-align: left;
+}
+
+.projected-pl td:not(:first-child) {
+  text-align: right;
+}
+
+.projected-pl .pl-section td {
+  background: #d8e4d1;
+  font-weight: 700;
+}
+
+.projected-pl .pl-subsection td {
+  background: #c7d3e0;
+  font-weight: 700;
+}
+
+.projected-pl .pl-total td,
+.projected-pl .dep-total-row td {
+  background: #f0ddcf;
+  font-weight: 700;
+}
+
+.projected-pl .pl-indent-1 {
+  padding-left: 14px;
+}
+
+.projected-pl .dep-year {
+  text-align: center;
+  font-weight: 700;
+  background: #c7d3e0;
+}
+
+.projected-pl td.ok {
+  background: #c6efce;
+  color: #1f4e2c;
+  font-weight: 700;
+  text-align: center;
+}
+
+.projected-pl td.bad {
+  background: #ffc7ce;
+  color: #9c0006;
+  font-weight: 700;
+  text-align: center;
 }
 
 .hidden {
