@@ -323,6 +323,16 @@ select {
   margin-top: 16px;
 }
 
+.wizard-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.wizard-hidden {
+  display: none !important;
+}
+
 #output {
   margin-top: 10px;
   overflow: auto;

@@ -64,7 +64,35 @@
 
       <div class="dashboard-grid">
         <section class="workspace">
-          <div id="business-setup-section" class="section-card">
+
+          <div id="client-details-section" class="section-card" data-form-step="1">
+            <div class="section-head">
+              <div>
+                <h3>Client / Proposal Details</h3>
+                <p>Basic profile for the proposal</p>
+              </div>
+              <span class="tag">Required</span>
+            </div>
+
+            <div class="form-grid two-col">
+              <label>Client Name <input type="text" placeholder="Enter client name" /></label>
+              <label>Firm Name <input type="text" placeholder="Enter firm name" /></label>
+              <label>Constitution
+                <select>
+                  <option>Proprietorship</option>
+                  <option>Partnership</option>
+                  <option>LLP</option>
+                  <option>Pvt Ltd</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label>Business / Industry <input type="text" placeholder="Manufacturing / Trading / Services" /></label>
+              <label>Bank Name <input type="text" placeholder="Enter bank name" /></label>
+              <label>Branch Name <input type="text" placeholder="Enter branch name" /></label>
+            </div>
+          </div>
+
+          <div id="business-setup-section" class="section-card" data-form-step="1">
             <div class="section-head">
               <div>
                 <h3>Business Setup</h3>
@@ -101,34 +129,7 @@
             </div>
           </div>
 
-          <div class="section-card">
-            <div class="section-head">
-              <div>
-                <h3>Client / Proposal Details</h3>
-                <p>Basic profile for the proposal</p>
-              </div>
-              <span class="tag">Required</span>
-            </div>
-
-            <div class="form-grid two-col">
-              <label>Client Name <input type="text" placeholder="Enter client name" /></label>
-              <label>Firm Name <input type="text" placeholder="Enter firm name" /></label>
-              <label>Constitution
-                <select>
-                  <option>Proprietorship</option>
-                  <option>Partnership</option>
-                  <option>LLP</option>
-                  <option>Pvt Ltd</option>
-                  <option>Other</option>
-                </select>
-              </label>
-              <label>Business / Industry <input type="text" placeholder="Manufacturing / Trading / Services" /></label>
-              <label>Bank Name <input type="text" placeholder="Enter bank name" /></label>
-              <label>Branch Name <input type="text" placeholder="Enter branch name" /></label>
-            </div>
-          </div>
-
-          <div id="cc-facility-section" class="section-card">
+          <div id="cc-facility-section" class="section-card" data-form-step="2">
             <div class="section-head">
               <div>
                 <h3>CC Facility Details</h3>
@@ -148,7 +149,7 @@
             </div>
           </div>
 
-          <div id="term-loan-section" class="section-card hidden">
+          <div id="term-loan-section" class="section-card hidden" data-form-step="2">
             <div class="section-head">
               <div>
                 <h3>Term Loan Details</h3>
@@ -165,7 +166,7 @@
             </div>
           </div>
 
-          <div id="existing-business-section" class="section-card hidden">
+          <div id="existing-business-section" class="section-card hidden" data-form-step="3">
             <div class="section-head">
               <div>
                 <h3>Existing Business Inputs</h3>
@@ -236,7 +237,12 @@
         </aside>
       </div>
 
-      <section id="generated-output-section" class="output-section">
+      <section class="wizard-actions" id="wizard-actions">
+        <button id="wizard-back" type="button" class="btn btn-light">Back</button>
+        <button id="wizard-next" type="button" class="btn btn-primary">Next</button>
+      </section>
+
+      <section id="generated-output-section" class="output-section" data-form-step="4">
         <div class="section-head">
           <div>
             <h3>Generated Statements</h3>
