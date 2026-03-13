@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+
 import pandas as pd
 import streamlit as st
 
@@ -8,82 +10,298 @@ from excel_formatter import build_excel_report
 from formulas import YEARS
 
 
-def fmt_currency(value: float | str) -> str:
+def fmt_currency(value: float | str, percent: bool = False) -> str:
     if isinstance(value, str):
         return value
+    if percent:
+        return f"{value:,.2f}%"
     return f"{value:,.2f}"
 
 
-def projected_bs_view(bs: dict[str, list[float]]) -> pd.DataFrame:
-    fy_cols = [f"FY {idx}" for idx in range(1, 6)]
+def inject_table_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .bank-table-wrap{
+            overflow-x:auto;
+            margin-top:8px;
+            margin-bottom:16px;
+        }
+        table.bank-table{
+            border-collapse:collapse;
+            width:100%;
+            min-width:980px;
+            font-size:15px;
+        }
+        table.bank-table th, table.bank-table td{
+            border:1px solid #8b8b8b;
+            padding:8px 10px;
+        }
+        table.bank-table thead th{
+            background:#103C72;
+            color:#ffffff;
+            text-align:center;
+            font-weight:700;
+        }
+        table.bank-table td:first-child{
+            text-align:left;
+            min-width:360px;
+        }
+        table.bank-table td:not(:first-child){
+            text-align:right;
+        }
+        table.bank-table tr.section td{
+            background:#CFDCC8;
+            font-weight:700;
+        }
+        table.bank-table tr.subsection td{
+            background:#C7D1DE;
+            font-weight:700;
+        }
+        table.bank-table tr.total td{
+            background:#EAD8C5;
+            font-weight:700;
+        }
+        table.bank-table tr.status-ok td:last-child{
+            color:#166534;
+            font-weight:700;
+        }
+        table.bank-table tr.status-alert td:last-child{
+            color:#b91c1c;
+            font-weight:700;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    def section(title: str) -> dict[str, str]:
-        return {"Particulars": title, **{col: "" for col in fy_cols}}
 
-    def row(title: str, key: str) -> dict[str, str]:
-        return {"Particulars": title, **{col: fmt_currency(bs[key][idx]) for idx, col in enumerate(fy_cols)}}
-
-    def row_values(title: str, values: list[float]) -> dict[str, str]:
-        return {"Particulars": title, **{col: fmt_currency(values[idx]) for idx, col in enumerate(fy_cols)}}
-
-    rows = [
-        section("CURRENT LIABILITIES"),
-        row("(i) From Applicant Bank", "cc_from_applicant_bank"),
-        row("(ii) From Other Banks", "cc_from_other_banks"),
-        row("(iii) Of Which Bills Purchased & Discounted", "bills_purchased"),
-        row("Short Term Borrowings from Others", "short_term_borrowings_others"),
-        row("Sundry Creditors (Trade)", "sundry_creditors"),
-        row("Advances from Customers / Deposits", "advances_customers"),
-        row("Provision for Taxation", "provision_tax"),
-        row("Dividend Payable", "dividend_payable"),
-        row("Other Statutory Liabilities", "other_statutory"),
-        row("Other Current Liabilities & Provisions", "other_current_liabilities"),
-        row("Total Current Liabilities (B)", "total_current_liabilities"),
-        section("TERM LIABILITIES"),
-        row("Term Loans", "term_loans"),
-        row("Other Term Liabilities", "other_term_liabilities"),
-        row_values("Total Term Liabilities (C)", [tl + ot for tl, ot in zip(bs["term_loans"], bs["other_term_liabilities"])]),
-        row("Total Outside Liabilities (D)", "total_outside_liabilities"),
-        section("NET WORTH"),
-        row("Share Capital", "share_capital"),
-        row("General Reserve", "general_reserve"),
-        row("Revaluation Reserve", "revaluation_reserve"),
-        row("Other Reserves", "other_reserves"),
-        row("Surplus / (Deficit) in P&L A/c", "surplus_pl"),
-        row("Net Worth (E)", "net_worth"),
-        row("Total Liabilities (F = D + E)", "total_liabilities"),
-        section("CURRENT ASSETS"),
-        row("Cash & Bank Balances", "cash_bank"),
-        row("Government & Trustee Securities", "govt_securities"),
-        row("Fixed Deposits with Banks", "fixed_deposits"),
-        row("Receivables", "receivables"),
-        row("Export Receivables", "export_receivables"),
-        row("Deferred Receivables", "deferred_receivables"),
-        row("Stocks-in-Trade", "stocks"),
-        row("Advances to Suppliers of Merchandise", "advances_suppliers"),
-        row("Advance Payment of Taxes", "advance_tax"),
-        row("Other Current Assets", "other_current_assets"),
-        row("Total Current Assets (G)", "total_current_assets"),
-        section("FIXED ASSETS"),
-        row("Gross Block", "gross_block"),
-        row("Depreciation to Date", "dep_to_date"),
-        row("Net Block (H)", "net_block"),
-        section("OTHER NON-CURRENT ASSETS"),
-        row("Other Investments", "other_investments"),
-        row("Security Deposits / Tender Deposits", "security_deposits"),
-        row("Other Non-Current Assets", "other_non_current_assets"),
-        row("Total Other Non-Current Assets (I)", "total_other_non_current"),
-        section("INTANGIBLE ASSETS"),
-        row("Intangible Assets", "intangible_assets"),
-        row("Total Assets (J)", "total_assets"),
-        section("WORKING CAPITAL CHECK"),
-        row("Net Working Capital (L)", "net_working_capital"),
-        row("Diff Check Rounded (M)", "balance_diff"),
-        row("Balance Status (N)", "balance_status"),
+def render_statement_table(
+    title: str,
+    rows: list[tuple[str, list[float] | list[str] | None, str | None, bool]],
+) -> None:
+    html_parts = [
+        f"<h3>{html.escape(title)}</h3>",
+        '<div class="bank-table-wrap">',
+        '<table class="bank-table">',
+        "<thead><tr><th>Particulars</th>",
     ]
-    return pd.DataFrame(rows)
+    for fy in YEARS:
+        html_parts.append(f"<th>{html.escape(fy.replace('FY', 'FY '))}</th>")
+    html_parts.append("</tr></thead><tbody>")
+
+    for label, values, row_style, is_percent in rows:
+        row_class = row_style or ""
+        html_parts.append(f'<tr class="{row_class}">')
+        html_parts.append(f"<td>{html.escape(label)}</td>")
+        if values is None:
+            for _ in YEARS:
+                html_parts.append("<td></td>")
+        else:
+            for v in values:
+                if isinstance(v, str):
+                    html_parts.append(f"<td>{html.escape(v)}</td>")
+                else:
+                    html_parts.append(f"<td>{fmt_currency(v, percent=is_percent)}</td>")
+        html_parts.append("</tr>")
+
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
+
+def render_ratios_table(ratios_df: pd.DataFrame) -> None:
+    html_parts = [
+        "<h3>Financial Ratios Analysis</h3>",
+        '<div class="bank-table-wrap">',
+        '<table class="bank-table">',
+        "<thead><tr>",
+        "<th>S.No</th>",
+        "<th>Particulars</th>",
+        "<th>Numerator</th>",
+        "<th>Denominator</th>",
+    ]
+    for fy in YEARS:
+        html_parts.append(f"<th>{html.escape(fy.replace('FY', 'FY '))}</th>")
+    html_parts.append("<th>Bank Acceptable Benchmark</th><th>Status</th></tr></thead><tbody>")
+
+    for _, row in ratios_df.iterrows():
+        status = str(row["Status"])
+        row_class = "status-ok" if status == "OK" else "status-alert"
+        html_parts.append(f'<tr class="{row_class}">')
+        html_parts.append(f"<td>{row['S.No']}</td>")
+        html_parts.append(f"<td>{html.escape(str(row['Particulars']))}</td>")
+        html_parts.append(f"<td>{html.escape(str(row['Numerator']))}</td>")
+        html_parts.append(f"<td>{html.escape(str(row['Denominator']))}</td>")
+        for fy in YEARS:
+            val = row[fy]
+            html_parts.append(f"<td>{val:,.2f}</td>")
+        html_parts.append(f"<td>{html.escape(str(row['Bank Acceptable Benchmark']))}</td>")
+        html_parts.append(f"<td>{html.escape(status)}</td>")
+        html_parts.append("</tr>")
+
+    html_parts.append("</tbody></table></div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
+
+
+def build_pl_rows(pl: dict) -> list[tuple[str, list[float] | None, str | None, bool]]:
+    return [
+        ("1. Gross Income", None, "section", False),
+        ("(i) Sales (Net of Returns)", None, "subsection", False),
+        ("(a) Domestic Sales", pl["domestic_sales"], None, False),
+        ("(b) Export Sales", pl["export_sales"], None, False),
+        ("(c) Sub-Total", pl["sales"], "total", False),
+        ("(d) Percentage Rise/Fall in Sales", pl["sales_growth_pct"], None, True),
+        ("(ii) Other Income", None, "subsection", False),
+        ("(a) Duty Drawback", [0.0] * 5, None, False),
+        ("(b) Cash Assistance", [0.0] * 5, None, False),
+        ("(c) Commission & Brokerage", [0.0] * 5, None, False),
+        ("(d) Sub-Total", pl["other_income"], "total", False),
+        (
+            "(iii) Total Gross Income",
+            [s + oi for s, oi in zip(pl["sales"], pl["other_income"])],
+            "section",
+            False,
+        ),
+        ("2. Cost of Sales", None, "section", False),
+        ("(i) Purchases", pl["purchases"], None, False),
+        ("(ii) Carriage Inward", pl["carriage_inward"], None, False),
+        (
+            "(iii) Sub-Total",
+            [p + c for p, c in zip(pl["purchases"], pl["carriage_inward"])],
+            "total",
+            False,
+        ),
+        ("(iv) Add Opening Stock", pl["opening_stock"], None, False),
+        ("(vi) Less Closing Stock", pl["closing_stock"], None, False),
+        ("(vii) Total Cost of Sales", pl["cost_of_sales"], "section", False),
+        ("3. Operating Expenses", None, "section", False),
+        ("Salary", pl["salary"], None, False),
+        ("Rent", pl["rent"], None, False),
+        ("Power & Fuel", pl["power_fuel"], None, False),
+        ("Travelling & Conveyance", pl["travelling"], None, False),
+        ("Telephone & Internet", pl["telephone"], None, False),
+        ("Office Expenses", pl["office"], None, False),
+        ("Printing & Stationery", pl["printing"], None, False),
+        ("Repairs & Maintenance", pl["repairs"], None, False),
+        ("Other Operating Expenses", pl["other_operating"], None, False),
+        (
+            "4. Operating Profit (Before Interest & Depreciation)",
+            pl["op_profit_before_int_dep"],
+            "section",
+            False,
+        ),
+        ("5. Interest on Cash Credit / OD", pl["interest_cc"], "section", False),
+        ("6. Depreciation", pl["depreciation"], "section", False),
+        (
+            "7. Operating Profit (After Interest & Depreciation)",
+            pl["op_profit_after_int_dep"],
+            "section",
+            False,
+        ),
+        ("9. Profit Before Tax", pl["pbt"], "section", False),
+        ("10. Provision for Tax", pl["tax"], "subsection", False),
+        ("11. Net Profit", pl["net_profit"], "section", False),
+        ("12. Dividend", pl["dividend"], "subsection", False),
+        ("13. Retained Profit", pl["retained_profit"], "total", False),
+    ]
+
+
+def build_bs_rows(bs: dict) -> list[tuple[str, list[float] | list[str] | None, str | None, bool]]:
+    return [
+        ("CURRENT LIABILITIES", None, "section", False),
+        ("(i) From Applicant Bank", bs["cc_from_applicant_bank"], None, False),
+        ("(ii) From Other Banks", bs["cc_from_other_banks"], None, False),
+        ("(iii) Of Which Bills Purchased & Discounted", bs["bills_purchased"], None, False),
+        (
+            "Short Term Borrowings from Others",
+            bs["short_term_borrowings_others"],
+            None,
+            False,
+        ),
+        ("Sundry Creditors (Trade)", bs["sundry_creditors"], None, False),
+        ("Advances from Customers / Deposits", bs["advances_customers"], None, False),
+        ("Provision for Taxation", bs["provision_tax"], None, False),
+        ("Dividend Payable", bs["dividend_payable"], None, False),
+        ("Other Statutory Liabilities", bs["other_statutory"], None, False),
+        ("Other Current Liabilities & Provisions", bs["other_current_liabilities"], None, False),
+        ("Total Current Liabilities (B)", bs["total_current_liabilities"], "total", False),
+        ("TERM LIABILITIES", None, "section", False),
+        ("Term Loans", bs["term_loans"], None, False),
+        ("Other Term Liabilities", bs["other_term_liabilities"], None, False),
+        (
+            "Total Term Liabilities (C)",
+            [tl + ot for tl, ot in zip(bs["term_loans"], bs["other_term_liabilities"])],
+            "total",
+            False,
+        ),
+        ("Total Outside Liabilities (D)", bs["total_outside_liabilities"], "section", False),
+        ("NET WORTH", None, "section", False),
+        ("Share Capital", bs["share_capital"], None, False),
+        ("General Reserve", bs["general_reserve"], None, False),
+        ("Revaluation Reserve", bs["revaluation_reserve"], None, False),
+        ("Other Reserves", bs["other_reserves"], None, False),
+        ("Surplus / (Deficit) in P&L A/c", bs["surplus_pl"], None, False),
+        ("Net Worth (E)", bs["net_worth"], "total", False),
+        ("Total Liabilities (F = D + E)", bs["total_liabilities"], "section", False),
+        ("CURRENT ASSETS", None, "section", False),
+        ("Cash & Bank Balances", bs["cash_bank"], None, False),
+        ("Government & Trustee Securities", bs["govt_securities"], None, False),
+        ("Fixed Deposits with Banks", bs["fixed_deposits"], None, False),
+        ("Receivables", bs["receivables"], None, False),
+        ("Export Receivables", bs["export_receivables"], None, False),
+        ("Deferred Receivables", bs["deferred_receivables"], None, False),
+        ("Stocks-in-Trade", bs["stocks"], None, False),
+        ("Advances to Suppliers of Merchandise", bs["advances_suppliers"], None, False),
+        ("Advance Payment of Taxes", bs["advance_tax"], None, False),
+        ("Other Current Assets", bs["other_current_assets"], None, False),
+        ("Total Current Assets (G)", bs["total_current_assets"], "total", False),
+        ("FIXED ASSETS", None, "section", False),
+        ("Gross Block", bs["gross_block"], None, False),
+        ("Depreciation to Date", bs["dep_to_date"], None, False),
+        ("Net Block (H)", bs["net_block"], "total", False),
+        ("OTHER NON-CURRENT ASSETS", None, "section", False),
+        ("Other Investments", bs["other_investments"], None, False),
+        ("Security Deposits / Tender Deposits", bs["security_deposits"], None, False),
+        ("Other Non-Current Assets", bs["other_non_current_assets"], None, False),
+        ("Total Other Non-Current Assets (I)", bs["total_other_non_current"], "total", False),
+        ("INTANGIBLE ASSETS", None, "section", False),
+        ("Intangible Assets", bs["intangible_assets"], None, False),
+        ("Total Assets (J)", bs["total_assets"], "section", False),
+        ("Net Working Capital (L)", bs["net_working_capital"], "total", False),
+        ("Diff Check Rounded (M)", bs["balance_diff"], None, False),
+        ("Balance Status (N)", bs["balance_status"], "subsection", False),
+    ]
+
+
+def build_wc_rows(wc: dict) -> list[tuple[str, list[float] | None, str | None, bool]]:
+    return [
+        ("A. CURRENT ASSETS", None, "section", False),
+        ("Raw Material", wc["raw_material"], None, False),
+        ("Work in Progress", wc["wip"], None, False),
+        ("Finished Goods", wc["finished_goods"], None, False),
+        ("Receivables / Sundry Debtors", wc["receivables"], None, False),
+        ("Cash & Bank", wc["cash_bank"], None, False),
+        ("Other Current Assets", wc["other_current_assets"], None, False),
+        ("Total Current Assets (A)", wc["total_current_assets"], "total", False),
+        ("B. CURRENT LIABILITIES (OTHER THAN BANK)", None, "section", False),
+        ("Sundry Creditors", wc["sundry_creditors"], None, False),
+        ("Outstanding Expenses", wc["outstanding_expenses"], None, False),
+        ("Statutory Liabilities", wc["statutory_liabilities"], None, False),
+        ("Total Current Liabilities (B)", wc["total_current_liabilities"], "total", False),
+        ("C. WORKING CAPITAL GAP (A - B)", wc["wc_gap"], "section", False),
+        ("D. BORROWER CONTRIBUTION (25% of CA)", wc["borrower_contribution"], "subsection", False),
+        ("E. MAXIMUM PERMISSIBLE BANK FINANCE (MPBF)", wc["mpbf"], "total", False),
+        ("F. PROPOSED CC LIMIT", wc["proposed_cc_limit"], "section", False),
+        ("Alternative - Projected Annual Turnover", wc["projected_annual_turnover"], "subsection", False),
+        ("Working Capital Requirement @25%", wc["nayak_wc_requirement"], None, False),
+        ("Borrower Contribution @5%", wc["nayak_borrower_contribution"], None, False),
+        ("Eligible Bank Finance @20%", wc["nayak_eligible_bank_finance"], "total", False),
+    ]
+
 
 st.set_page_config(page_title="CMA Projection Software | Phase-1", layout="wide")
+inject_table_css()
+
 st.title("CMA Projection Software (Phase-1)")
 st.caption("Phase-1: Proposal profile + New Business projection engine + Excel output")
 
@@ -148,43 +366,24 @@ if submitted:
         "inventory_days": inventory_days if inventory_days > 0 else None,
         "expense_loading_factor": expense_loading_factor if expense_loading_factor > 0 else None,
     }
+
     result = generate_projection(payload)
-
-    st.success("Projections generated. Engine used only CC Amount + ROI (with optional profile-tuned assumptions).")
-
-    pl_df = pd.DataFrame(result["pl"], index=YEARS).T[[*YEARS]]
-    bs_display_df = projected_bs_view(result["bs"])
-    wc_df = pd.DataFrame(result["wc"], index=YEARS).T[[*YEARS]]
-    ratios_df = pd.DataFrame(result["ratios"])
+    st.success("Projections generated. Banker-style formatting restored.")
 
     t1, t2, t3, t4 = st.tabs(["Projected PL", "Projected BS", "Working Capital", "Ratios"])
+
     with t1:
-        st.dataframe(pl_df, use_container_width=True)
+        render_statement_table("PROJECTED PL", build_pl_rows(result["pl"]))
+
     with t2:
-        st.markdown("### PROJECTED BS")
+        render_statement_table("PROJECTED BS", build_bs_rows(result["bs"]))
 
-        section_rows = bs_display_df["FY 1"].eq("")
-        total_rows = bs_display_df["Particulars"].str.startswith("Total") | bs_display_df["Particulars"].str.contains("Net Worth \(E\)|Net Block \(H\)|Net Working Capital \(L\)")
-
-        def highlight_rows(row: pd.Series) -> list[str]:
-            if row.name in bs_display_df.index[section_rows]:
-                return ["background-color: #d9e8d3; font-weight: 700;"] * len(row)
-            if row.name in bs_display_df.index[total_rows]:
-                return ["background-color: #f6e3d3; font-weight: 700;"] * len(row)
-            return [""] * len(row)
-
-        styled_bs = (
-            bs_display_df.style
-            .hide(axis="index")
-            .set_properties(**{"text-align": "right"}, subset=["FY 1", "FY 2", "FY 3", "FY 4", "FY 5"])
-            .set_properties(**{"text-align": "left"}, subset=["Particulars"])
-            .apply(highlight_rows, axis=1)
-        )
-        st.dataframe(styled_bs, use_container_width=True, height=1000)
     with t3:
-        st.dataframe(wc_df, use_container_width=True)
+        render_statement_table("WORKING CAPITAL ANALYSIS", build_wc_rows(result["wc"]))
+
     with t4:
-        st.dataframe(ratios_df, use_container_width=True)
+        ratios_df = pd.DataFrame(result["ratios"])
+        render_ratios_table(ratios_df)
 
     excel_bytes = build_excel_report(result)
     st.download_button(
@@ -194,4 +393,4 @@ if submitted:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 else:
-    st.info("Fill proposal details and click **Generate Phase-1 Projections**.")
+    st.info("Fill proposal details and click Generate Phase-1 Projections.")
