@@ -11,30 +11,133 @@
     <script src="app.js" defer></script>
   </head>
   <body>
-    <header>
-      <h1>Banker-Grade CMA Software Dashboard</h1>
-      <p>Only two manual inputs are required: CC Amount and ROI. Everything else auto-calculates.</p>
-    </header>
+    <main class="form-layout">
+      <div class="form-shell">
+        <section class="hero-card">
+          <div>
+            <h1>CMA Projection Input Form</h1>
+            <p>Enter proposal details, facility assumptions, and operating inputs to generate a bank-ready CMA report.</p>
+          </div>
+          <div class="hero-actions">
+            <button id="save-draft" type="button">Save Draft</button>
+            <button id="run" type="button" class="primary">Generate CMA</button>
+          </div>
+        </section>
 
-    <main>
-      <section class="card">
-        <h2>Dashboard Controls</h2>
-        <div class="grid">
-          <label>Actual Year Label <input id="actual-year" value="FY 2024-25" /></label>
-          <label>Projection Years <input id="projection-years" type="number" min="2" max="10" value="5" /></label>
-          <label>CC Amount <input id="cc-amount" type="number" value="10000000" /></label>
-          <label>ROI (%) <input id="roi" type="number" value="11" step="0.1" /></label>
-        </div>
-        <div class="actions">
-          <button id="run" class="primary">Generate CMA</button>
-          <button id="download">Download Same-as-Display PDF</button>
-        </div>
-      </section>
+        <div class="input-grid">
+          <div class="input-sections">
+            <section class="card section-card">
+              <div class="section-header"><h2>Business Setup</h2><span>Required</span></div>
+              <div class="grid two-col">
+                <label>Business Type
+                  <select>
+                    <option>New Business</option>
+                    <option>Existing Business</option>
+                  </select>
+                </label>
+                <label>Loan Type
+                  <select>
+                    <option>CC</option>
+                    <option>Term Loan</option>
+                    <option>CC + Term Loan</option>
+                  </select>
+                </label>
+                <label>Requirement
+                  <select>
+                    <option>New CC</option>
+                    <option>Enhancement</option>
+                    <option>Renewal</option>
+                    <option>New Term Loan</option>
+                  </select>
+                </label>
+                <label>Projection Starting FY
+                  <input id="actual-year" type="text" placeholder="2026-27" value="FY 2024-25" />
+                </label>
+              </div>
+            </section>
 
-      <section class="card">
-        <h2>Generated Statements (Auto Projection)</h2>
-        <div id="output"></div>
-      </section>
+            <section class="card section-card">
+              <div class="section-header"><h2>Client / Proposal Details</h2><span>Required</span></div>
+              <div class="grid two-col">
+                <label>Client Name <input type="text" placeholder="Enter client name" /></label>
+                <label>Firm Name <input type="text" placeholder="Enter firm name" /></label>
+                <label>Constitution
+                  <select>
+                    <option>Proprietorship</option>
+                    <option>Partnership</option>
+                    <option>LLP</option>
+                    <option>Pvt Ltd</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+                <label>Business / Industry <input type="text" placeholder="Manufacturing / Trading / Services" /></label>
+                <label>Bank Name <input type="text" placeholder="Enter bank name" /></label>
+                <label>Branch Name <input type="text" placeholder="Enter branch name" /></label>
+              </div>
+            </section>
+
+            <section class="card section-card">
+              <div class="section-header"><h2>Facility Details</h2><span>Required</span></div>
+              <div class="grid two-col">
+                <label>Existing Limit <input type="number" placeholder="0" /></label>
+                <label>Proposed Limit <input id="cc-amount" type="number" placeholder="0" value="10000000" /></label>
+                <label>ROI (%) <input id="roi" type="number" placeholder="10.50" value="11" step="0.1" /></label>
+                <label>Projection Years <input id="projection-years" type="number" min="2" max="10" placeholder="5" value="5" /></label>
+              </div>
+            </section>
+
+            <section class="card section-card">
+              <div class="section-header"><h2>Operational Assumptions</h2><span>Required</span></div>
+              <div class="grid two-col">
+                <label>Projected Annual Sales <input type="number" placeholder="12500000" /></label>
+                <label>Sales Growth (%) <input type="number" placeholder="10" /></label>
+                <label>Gross Profit (%) <input type="number" placeholder="18" /></label>
+                <label>Debtors Days <input type="number" placeholder="90" /></label>
+                <label>Creditors Days <input type="number" placeholder="60" /></label>
+                <label>Inventory Days <input type="number" placeholder="45" /></label>
+              </div>
+            </section>
+          </div>
+
+          <aside class="side-sections">
+            <section class="card">
+              <h3>Quick Preview</h3>
+              <div class="preview-stack">
+                <div class="preview-item">
+                  <p>Estimated Annual Sales</p>
+                  <strong>₹ 1,25,00,000</strong>
+                </div>
+                <div class="preview-item">
+                  <p>Projected ROI</p>
+                  <strong>10.50%</strong>
+                </div>
+                <div class="preview-item">
+                  <p>Debtors Cycle</p>
+                  <strong>90 Days</strong>
+                </div>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>Validation Checklist</h3>
+              <ul class="checklist">
+                <li>Check proposed limit and ROI before generating report</li>
+                <li>Ensure debtors, creditors, and inventory days are practical</li>
+                <li>Keep projected sales aligned with production capacity</li>
+                <li>Confirm business type and requirement are correctly selected</li>
+              </ul>
+            </section>
+          </aside>
+        </div>
+
+        <section class="card output-card">
+          <h2>Generated Statements (Auto Projection)</h2>
+          <div class="actions">
+            <button id="download" type="button">Download Same-as-Display PDF</button>
+          </div>
+          <div id="output"></div>
+        </section>
+      </div>
     </main>
   </body>
 </html>
