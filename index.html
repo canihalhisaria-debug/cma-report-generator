@@ -30,20 +30,20 @@
               <div class="section-header"><h2>Business Setup</h2><span>Required</span></div>
               <div class="grid two-col">
                 <label>Business Type
-                  <select>
+                  <select id="business-type">
                     <option>New Business</option>
                     <option>Existing Business</option>
                   </select>
                 </label>
                 <label>Loan Type
-                  <select>
+                  <select id="loan-type">
                     <option>CC</option>
                     <option>Term Loan</option>
                     <option>CC + Term Loan</option>
                   </select>
                 </label>
                 <label>Requirement
-                  <select>
+                  <select id="requirement">
                     <option>New CC</option>
                     <option>Enhancement</option>
                     <option>Renewal</option>
@@ -76,44 +76,112 @@
               </div>
             </section>
 
-            <section class="card section-card">
-              <div class="section-header"><h2>Facility Details</h2><span>Required</span></div>
+            <section id="cc-facility-section" class="card section-card">
+              <div class="section-header"><h2>CC Facility Details</h2><span>Required</span></div>
               <div class="grid two-col">
-                <label>Existing Limit <input type="number" placeholder="0" /></label>
-                <label>Proposed Limit <input id="cc-amount" type="number" placeholder="0" value="10000000" /></label>
-                <label>ROI (%) <input id="roi" type="number" placeholder="10.50" value="11" step="0.1" /></label>
-                <label>Projection Years <input id="projection-years" type="number" min="2" max="10" placeholder="5" value="5" /></label>
+                <label>Existing CC Limit <input type="number" placeholder="0" /></label>
+                <label>Proposed CC Limit <input id="cc-amount" type="number" placeholder="0" value="10000000" /></label>
+                <label>CC ROI (%) <input id="roi" type="number" placeholder="10.50" value="11" step="0.1" /></label>
+                <label>CC Utilisation (%) <input type="number" placeholder="100" /></label>
+                <label>Debtors Days <input type="number" placeholder="90" /></label>
+                <label>Creditors Days <input type="number" placeholder="60" /></label>
+                <label>Inventory Days <input type="number" placeholder="45" /></label>
               </div>
             </section>
 
-            <section class="card section-card">
-              <div class="section-header"><h2>Operational Assumptions</h2><span>Required</span></div>
+            <section id="term-loan-section" class="card section-card hidden">
+              <div class="section-header"><h2>Term Loan Details</h2><span>Required</span></div>
+              <div class="grid two-col">
+                <label>Term Loan Amount <input type="number" placeholder="0" /></label>
+                <label>Term Loan ROI (%) <input type="number" placeholder="11.00" /></label>
+                <label>Repayment Period (Months) <input type="number" placeholder="60" /></label>
+                <label>Moratorium (Months) <input type="number" placeholder="6" /></label>
+                <label>Installment Type
+                  <select>
+                    <option>Monthly</option>
+                    <option>Quarterly</option>
+                    <option>Half-Yearly</option>
+                  </select>
+                </label>
+                <label>Purpose of Term Loan
+                  <select>
+                    <option>Machinery Purchase</option>
+                    <option>Plant Expansion</option>
+                    <option>Building</option>
+                    <option>Vehicle</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+                <label>Promoter Contribution <input type="number" placeholder="0" /></label>
+                <label>DSCR Target <input type="number" placeholder="1.50" /></label>
+              </div>
+            </section>
+
+            <section id="machinery-section" class="card section-card hidden">
+              <div class="section-header"><h2>Machinery / Asset Details</h2><span>Optional</span></div>
+              <div class="grid two-col">
+                <label>Machine / Asset Name <input type="text" placeholder="Power Press Machine" /></label>
+                <label>Qty <input type="number" placeholder="2" /></label>
+                <label>Cost per Unit <input type="number" placeholder="0" /></label>
+                <label>Total Cost <input type="number" placeholder="0" /></label>
+                <label>Depreciation Rate (%) <input type="number" placeholder="15" /></label>
+                <label>Expected Increase in Production (%) <input type="number" placeholder="0" /></label>
+              </div>
+            </section>
+
+            <section id="new-business-section" class="card section-card">
+              <div class="section-header"><h2>New Business Operational Assumptions</h2><span>Required</span></div>
               <div class="grid two-col">
                 <label>Projected Annual Sales <input type="number" placeholder="12500000" /></label>
                 <label>Sales Growth (%) <input type="number" placeholder="10" /></label>
                 <label>Gross Profit (%) <input type="number" placeholder="18" /></label>
-                <label>Debtors Days <input type="number" placeholder="90" /></label>
-                <label>Creditors Days <input type="number" placeholder="60" /></label>
-                <label>Inventory Days <input type="number" placeholder="45" /></label>
+                <label>Net Profit (%) <input type="number" placeholder="4.50" /></label>
+                <label>Installed Capacity / Units <input type="number" placeholder="0" /></label>
+                <label>Expected Capacity Utilisation (%) <input type="number" placeholder="65" /></label>
+                <label>Working Days <input type="number" placeholder="300" /></label>
+                <label>Average Daily Sales <input type="number" placeholder="0" /></label>
+              </div>
+            </section>
+
+            <section id="existing-business-section" class="card section-card hidden">
+              <div class="section-header"><h2>Existing Business Financial Inputs</h2><span>Required</span></div>
+              <div class="grid two-col">
+                <label>Last Audited Sales <input type="number" placeholder="0" /></label>
+                <label>Current Year Estimated Sales <input type="number" placeholder="0" /></label>
+                <label>Past Gross Profit (%) <input type="number" placeholder="0" /></label>
+                <label>Past Net Profit (%) <input type="number" placeholder="0" /></label>
+                <label>Sundry Debtors Outstanding <input type="number" placeholder="0" /></label>
+                <label>Sundry Creditors Outstanding <input type="number" placeholder="0" /></label>
+                <label>Closing Stock as on Date <input type="number" placeholder="0" /></label>
+                <label>Existing Net Worth <input type="number" placeholder="0" /></label>
+                <label>Existing CC Outstanding <input type="number" placeholder="0" /></label>
+                <label>Existing Term Loan Outstanding <input type="number" placeholder="0" /></label>
+                <label>Sales Growth on Existing Base (%) <input type="number" placeholder="10" /></label>
+                <label>Expected Improvement After Expansion (%) <input type="number" placeholder="5" /></label>
+                <label>Projection Years <input id="projection-years" type="number" min="2" max="10" placeholder="5" value="5" /></label>
               </div>
             </section>
           </div>
 
           <aside class="side-sections">
             <section class="card">
-              <h3>Quick Preview</h3>
-              <div class="preview-stack">
+              <h3>Dynamic Logic Preview</h3>
+              <div class="preview-stack" id="logic-preview">
                 <div class="preview-item">
-                  <p>Estimated Annual Sales</p>
-                  <strong>₹ 1,25,00,000</strong>
+                  <p>Business Type</p>
+                  <strong id="preview-business-type">New Business</strong>
                 </div>
                 <div class="preview-item">
-                  <p>Projected ROI</p>
-                  <strong>10.50%</strong>
+                  <p>Loan Type</p>
+                  <strong id="preview-loan-type">CC</strong>
                 </div>
                 <div class="preview-item">
-                  <p>Debtors Cycle</p>
-                  <strong>90 Days</strong>
+                  <p>Requirement</p>
+                  <strong id="preview-requirement">New CC</strong>
+                </div>
+                <div class="preview-item">
+                  <p>Visible Sections</p>
+                  <strong id="preview-visible-sections">CC + New Business</strong>
                 </div>
               </div>
             </section>

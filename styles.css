@@ -41,6 +41,7 @@ label { display: flex; flex-direction: column; gap: 0.35rem; color: var(--muted)
 input, select, button { padding: 0.65rem 0.7rem; border-radius: 12px; border: 1px solid var(--border); font-size: 0.95rem; background: #fff; }
 button { cursor: pointer; }
 .primary { background: var(--primary); color: #fff; border-color: transparent; }
+.hidden { display: none !important; }
 
 .preview-stack { display: grid; gap: 0.7rem; margin-top: 0.8rem; }
 .preview-item { background: #f8fafc; border-radius: 14px; padding: 0.8rem; }

@@ -764,6 +764,48 @@ async function downloadDisplayPdf() {
   }
 }
 
+
+function updateFormVisibility() {
+  const businessTypeEl = document.getElementById("business-type");
+  const loanTypeEl = document.getElementById("loan-type");
+  const requirementEl = document.getElementById("requirement");
+
+  const businessType = businessTypeEl ? businessTypeEl.value : "New Business";
+  const loanType = loanTypeEl ? loanTypeEl.value : "CC";
+  const requirement = requirementEl ? requirementEl.value : "New CC";
+
+  const showExistingBusinessFields = businessType === "Existing Business";
+  const showCCFields = loanType === "CC" || loanType === "CC + Term Loan";
+  const showTermLoanFields = loanType === "Term Loan" || loanType === "CC + Term Loan";
+
+  const toggle = (id, show) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle("hidden", !show);
+  };
+
+  toggle("cc-facility-section", showCCFields);
+  toggle("term-loan-section", showTermLoanFields);
+  toggle("machinery-section", showTermLoanFields);
+  toggle("existing-business-section", showExistingBusinessFields);
+  toggle("new-business-section", !showExistingBusinessFields);
+
+  const visible = [];
+  if (showCCFields) visible.push("CC");
+  if (showTermLoanFields) visible.push("Term Loan", "Machinery");
+  visible.push(showExistingBusinessFields ? "Existing Business" : "New Business");
+
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+
+  setText("preview-business-type", businessType);
+  setText("preview-loan-type", loanType);
+  setText("preview-requirement", requirement);
+  setText("preview-visible-sections", visible.join(" + "));
+}
+
 let model = [];
 function run() {
   model = buildModel();
@@ -771,6 +813,10 @@ function run() {
 }
 
 document.getElementById("run").addEventListener("click", run);
+["business-type", "loan-type", "requirement"].forEach((id) => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("change", updateFormVisibility);
+});
 document.getElementById("download").addEventListener("click", async () => {
   if (!model.length) run();
   await downloadDisplayPdf();
@@ -781,4 +827,5 @@ INPUT_IDS.forEach((id) => {
   if (el) el.addEventListener("change", run);
 });
 
+updateFormVisibility();
 run();
