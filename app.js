@@ -827,6 +827,26 @@ function downloadExcelReport() {
 }
 
 
+function setActiveStep(targetId) {
+  const progressButtons = document.querySelectorAll("#wizard-progress .step");
+  if (!progressButtons.length) return;
+
+  progressButtons.forEach((btn) => {
+    const isActive = btn.dataset.target === targetId;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-current", isActive ? "step" : "false");
+  });
+}
+
+function scrollToSection(targetId) {
+  const targetSection = document.getElementById(targetId);
+  if (!targetSection || targetSection.classList.contains("hidden")) return false;
+
+  targetSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  setActiveStep(targetId);
+  return true;
+}
+
 function updateFormVisibility() {
   const businessTypeEl = document.getElementById("business-type");
   const loanTypeEl = document.getElementById("loan-type");
@@ -866,6 +886,20 @@ function updateFormVisibility() {
   setText("preview-loan-type", loanType);
   setText("preview-requirement", requirement);
   setText("preview-visible-sections", visible.join(" + "));
+
+  const step2 = document.querySelector('#wizard-progress .step[data-step="2"]');
+  if (step2) {
+    step2.dataset.target = showCCFields ? "cc-facility-section" : "term-loan-section";
+  }
+
+  const step3 = document.querySelector('#wizard-progress .step[data-step="3"]');
+  if (step3) {
+    if (showExistingBusinessFields) {
+      step3.dataset.target = "existing-business-section";
+    } else {
+      step3.dataset.target = showTermLoanFields ? "term-loan-section" : "cc-facility-section";
+    }
+  }
 }
 
 let model = [];
@@ -885,10 +919,26 @@ document.getElementById("download").addEventListener("click", async () => {
   await downloadDisplayPdf();
 });
 
+document.querySelectorAll("#wizard-progress .step").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const { target } = btn.dataset;
+    if (!target) return;
+
+    if (!scrollToSection(target)) {
+      const fallback = document.getElementById("business-setup-section");
+      if (fallback) {
+        fallback.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActiveStep("business-setup-section");
+      }
+    }
+  });
+});
+
 INPUT_IDS.forEach((id) => {
   const el = document.getElementById(id);
   if (el) el.addEventListener("change", run);
 });
 
 updateFormVisibility();
+setActiveStep("business-setup-section");
 run();

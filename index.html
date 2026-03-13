@@ -52,19 +52,19 @@
         </div>
       </header>
 
-      <section class="progress-card">
-        <div class="step active"><span>1</span><strong>Business Setup</strong></div>
+      <section class="progress-card" id="wizard-progress">
+        <button type="button" class="step active" data-step="1" data-target="business-setup-section"><span>1</span><strong>Business Setup</strong></button>
         <div class="step-line"></div>
-        <div class="step"><span>2</span><strong>Loan Inputs</strong></div>
+        <button type="button" class="step" data-step="2" data-target="cc-facility-section"><span>2</span><strong>Loan Inputs</strong></button>
         <div class="step-line"></div>
-        <div class="step"><span>3</span><strong>Financial Drivers</strong></div>
+        <button type="button" class="step" data-step="3" data-target="existing-business-section"><span>3</span><strong>Financial Drivers</strong></button>
         <div class="step-line"></div>
-        <div class="step"><span>4</span><strong>Preview & Export</strong></div>
+        <button type="button" class="step" data-step="4" data-target="generated-output-section"><span>4</span><strong>Preview & Export</strong></button>
       </section>
 
       <div class="dashboard-grid">
         <section class="workspace">
-          <div class="section-card">
+          <div id="business-setup-section" class="section-card">
             <div class="section-head">
               <div>
                 <h3>Business Setup</h3>
@@ -236,7 +236,7 @@
         </aside>
       </div>
 
-      <section class="output-section">
+      <section id="generated-output-section" class="output-section">
         <div class="section-head">
           <div>
             <h3>Generated Statements</h3>
