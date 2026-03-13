@@ -764,6 +764,68 @@ async function downloadDisplayPdf() {
   }
 }
 
+function downloadExcelReport() {
+  if (!window.XLSX) {
+    alert("Excel export library not loaded yet. Please try again.");
+    return;
+  }
+  if (!model.length) {
+    run();
+  }
+
+  const wb = XLSX.utils.book_new();
+  const projectionHeaders = ["Particulars", ...model.map((item) => item.year)];
+
+  const plRows = [
+    projectionHeaders,
+    ["Domestic Sales", ...model.map((item) => item.dom)],
+    ["Export Sales", ...model.map((item) => item.exp)],
+    ["Other Operating Income", ...model.map((item) => item.ooi)],
+    ["Non Operating Income", ...model.map((item) => item.noi)],
+    ["Total Income", ...model.map((item) => item.totalIncome)],
+    ["Material Cost", ...model.map((item) => item.materialCost)],
+    ["Total Operating Expenses", ...model.map((item) => item.totalOpex)],
+    ["EBIT", ...model.map((item) => item.ebit)],
+    ["CC Interest", ...model.map((item) => item.ccInt)],
+    ["Term Loan Interest", ...model.map((item) => item.tlInt)],
+    ["Total Interest", ...model.map((item) => item.totalInterest)],
+    ["Profit Before Tax", ...model.map((item) => item.ebt)],
+    ["Tax", ...model.map((item) => item.tax)],
+    ["Net Profit", ...model.map((item) => item.pat)],
+  ];
+
+  const bsRows = [
+    projectionHeaders,
+    ["Current Assets", ...model.map((item) => item.ca)],
+    ["Net Fixed Assets", ...model.map((item) => item.nfa)],
+    ["Total Assets", ...model.map((item) => item.ca + item.nfa)],
+    ["Capital", ...model.map((item) => item.cap)],
+    ["Reserves", ...model.map((item) => item.res)],
+    ["Net Worth", ...model.map((item) => item.nw)],
+    ["Term Loan", ...model.map((item) => item.tl)],
+    ["Cash Credit", ...model.map((item) => item.cc)],
+    ["Current Liabilities", ...model.map((item) => item.cl)],
+    ["Total Liabilities", ...model.map((item) => item.nw + item.tl + item.cl)],
+  ];
+
+  const ratioRows = [
+    projectionHeaders,
+    ["Current Ratio", ...model.map((item) => item.currentRatio)],
+    ["Quick Ratio", ...model.map((item) => item.quickRatio)],
+    ["Gross Profit Ratio (%)", ...model.map((item) => item.gpRatio)],
+    ["EBIT Ratio (%)", ...model.map((item) => item.ebitRatio)],
+    ["Net Profit Ratio (%)", ...model.map((item) => item.netProfitRatio)],
+    ["Interest Coverage Ratio", ...model.map((item) => item.interestCoverageRatio)],
+    ["DSCR", ...model.map((item) => item.dscr)],
+  ];
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(plRows), "Projected PL");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bsRows), "Projected BS");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ratioRows), "Ratios");
+
+  XLSX.writeFile(wb, "CMA_Projection_Report.xlsx");
+}
+
 
 function updateFormVisibility() {
   const businessTypeEl = document.getElementById("business-type");
@@ -813,6 +875,7 @@ function run() {
 }
 
 document.getElementById("run").addEventListener("click", run);
+document.getElementById("save-draft").addEventListener("click", downloadExcelReport);
 ["business-type", "loan-type", "requirement"].forEach((id) => {
   const el = document.getElementById(id);
   if (el) el.addEventListener("change", updateFormVisibility);
